@@ -6,6 +6,8 @@ from fastapi.security import OAuth2PasswordRequestForm, OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 from .database import engine, get_db
 from . import models, schemas, auth
+import app.models as models
+from app.database import engine
 
 models.Base.metadata.create_all(bind=engine)
 

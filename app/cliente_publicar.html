@@ -94,7 +94,7 @@
             const price = document.getElementById("price").value;
             const mensaje = document.getElementById("mensaje");
 
-            const url = `http://127.0.0.1:8000/api/orders/publicar?quarry_name=${encodeURIComponent(quarry)}&delivery_address=${encodeURIComponent(delivery)}&total_price=${price}&origin_lat=${originCoords.lat}&origin_lng=${originCoords.lng}&dest_lat=${destCoords.lat}&dest_lng=${destCoords.lng}`;
+            const url = `https://volquetes-api.onrender.com/api/orders/publicar?quarry_name=${encodeURIComponent(quarry)}&delivery_address=${encodeURIComponent(delivery)}&total_price=${price}&origin_lat=${originCoords.lat}&origin_lng=${originCoords.lng}&dest_lat=${destCoords.lat}&dest_lng=${destCoords.lng}`;
 
             try {
                 const response = await fetch(url, { method: "POST" });
