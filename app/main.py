@@ -223,7 +223,7 @@ async def iniciar_viaje(
     })
     return {"mensaje": f"Flete #{order_id} en ruta", "estado": orden.status}
 
-@app.get("/api/orders/historial")
+@app.get("/api/historial-conductores")
 def obtener_historial_conductor(
     db: Session = Depends(get_db),
     current_user = Depends(auth.get_current_user)

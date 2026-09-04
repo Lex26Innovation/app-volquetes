@@ -42,209 +42,145 @@
             <hr>
             <div id="alertas">
                 <p><i>Esperando nuevos fletes publicados...</i></p>
+                <!-- Sección de Resumen de Ganancias e Historial -->
+<div style="margin-top: 20px; display: flex; gap: 15px;">
+  <div style="background: #e8f5e9; padding: 15px; border-radius: 8px; flex: 1; text-align: center;">
+    <h4 style="margin: 0; color: #2e7d32;">Ganancias Totales</h4>
+    <p id="total-ganancias" style="font-size: 22px; font-weight: bold; margin: 5px 0 0; color: #1b5e20;">S/ 0.00</p>
+  </div>
+  <div style="background: #e3f2fd; padding: 15px; border-radius: 8px; flex: 1; text-align: center;">
+    <h4 style="margin: 0; color: #1565c0;">Viajes Completados</h4>
+    <p id="total-viajes" style="font-size: 22px; font-weight: bold; margin: 5px 0 0; color: #0d47a1;">0</p>
+  </div>
+</div>
+
+<h3 style="margin-top: 25px;">Historial de Fletes</h3>
+<table style="width: 100%; border-collapse: collapse; margin-top: 10px;">
+  <thead>
+    <tr style="background: #f5f5f5; text-align: left;">
+      <th style="padding: 10px; border-bottom: 2px solid #ddd;">ID</th>
+      <th style="padding: 10px; border-bottom: 2px solid #ddd;">Origen</th>
+      <th style="padding: 10px; border-bottom: 2px solid #ddd;">Destino</th>
+      <th style="padding: 10px; border-bottom: 2px solid #ddd;">Monto</th>
+      <th style="padding: 10px; border-bottom: 2px solid #ddd;">Fecha</th>
+    </tr>
+  </thead>
+  <tbody id="tabla-historial">
+    <tr>
+      <td colspan="5" style="padding: 15px; text-align: center; color: #666;">Cargando historial...</td>
+    </tr>
+  </tbody>
+</table>
             </div>
         </div>
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script>
-        let ws;
-        const activeMaps = {};
-        const activeTruckMarkers = {};
-        const activeIntervals = {};
+<script>
+  let ws;
+  const activeMaps = {};
+  const activeTruckMarkers = {};
+  const activeIntervals = {};
 
-        window.onload = () => {
-            const token = localStorage.getItem("jwt_token");
-            if (token) cargarPerfil(token);
-        };
+  window.onload = () => {
+    const token = localStorage.getItem("jwt_token");
+    if (token) {
+      cargarPerfil(token);
+      cargarHistorial();
+    }
+  };
 
-        async function iniciarSesion() {
-            const phone = document.getElementById("phone").value.trim();
-            const password = document.getElementById("password").value.trim();
+  async function iniciarSesion() {
+    const phone = document.getElementById("phone").value.trim();
+    const password = document.getElementById("password").value.trim();
 
-            const formData = new URLSearchParams();
-            formData.append("username", phone);
-            formData.append("password", password);
+    const formData = new URLSearchParams();
+    formData.append("username", phone);
+    formData.append("password", password);
 
-            try {
-                const response = await fetch("https://volquetes-api.onrender.com/api/auth/login", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-                    body: formData
-                });
+    try {
+      const response = await fetch("https://volquetes-api.onrender.com/api/historial-conductores", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: formData
+      });
 
-                const data = await response.json();
-                if (response.ok) {
-                    localStorage.setItem("jwt_token", data.access_token);
-                    cargarPerfil(data.access_token);
-                } else {
-                    document.getElementById("loginError").innerText = data.detail || "Error al autenticar";
-                }
-            } catch (err) {
-                document.getElementById("loginError").innerText = "Error de conexión";
-            }
+      const data = await response.json();
+      if (response.ok) {
+        localStorage.setItem("jwt_token", data.access_token);
+        cargarPerfil(data.access_token);
+        cargarHistorial();
+      } else {
+        document.getElementById("loginError").innerText = data.detail || "Error al autenticar";
+      }
+    } catch (err) {
+      document.getElementById("loginError").innerText = "Error de conexión";
+    }
+  }
+
+  async function cargarPerfil(token) {
+    try {
+      const res = await fetch("https://volquetes-api.onrender.com/api/historial-conductores", {
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const perfil = await res.json();
+        const nombre = perfil.full_name || perfil.nombre_completo || perfil.nombre || perfil.contact_phone || "Conductor";
+        document.getElementById("driverName").innerText = nombre;
+        document.getElementById("loginForm").style.display = "none";
+        document.getElementById("radarSection").style.display = "block";
+      }
+    } catch (e) {
+      console.error("Error cargando perfil", e);
+    }
+  }
+
+  async function cargarHistorial() {
+    const token = localStorage.getItem("jwt_token");
+    if (!token) return;
+
+    try {
+      const res = await fetch("https://volquetes-api.onrender.com/api/historial-conductores", {
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+
+      const tbody = document.getElementById("tabla-historial");
+
+      if (res.ok) {
+        const data = await res.json();
+        const ganancias = Number(data.total_ganancias || 0);
+        document.getElementById("total-ganancias").innerText = `S/ ${ganancias.toFixed(2)}`;
+        document.getElementById("total-viajes").innerText = data.total_viajes || 0;
+
+        if (!data.historial || data.historial.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="5" style="padding: 15px; text-align: center; color: #666;">No hay viajes completados aún.</td></tr>';
+          return;
         }
 
-        async function cargarPerfil(token) {
-            try {
-                const response = await fetch("https://volquetes-api.onrender.com/api/conductores/mi-perfil", {
-                    headers: { "Authorization": `Bearer ${token}` }
-                });
+        tbody.innerHTML = data.historial.map(v => `
+          <tr style="border-bottom: 1px solid #eee;">
+            <td style="padding: 10px;">#${v.id}</td>
+            <td style="padding: 10px;">${v.quarry_name}</td>
+            <td style="padding: 10px;">${v.destination}</td>
+            <td style="padding: 10px; font-weight: bold; color: #2e7d32;">S/ ${v.price}</td>
+            <td style="padding: 10px;">${v.created_at}</td>
+          </tr>
+        `).join('');
+      } else {
+        const errorData = await res.text();
+        console.error("Detalle error:", res.status, errorData);
+        tbody.innerHTML = `<tr><td colspan="5" style="padding: 15px; text-align: center; color: #d32f2f;">No se pudo cargar el historial (Error HTTP ${res.status}).</td></tr>`;
+      }
+    } catch (error) {
+      console.error("Error al cargar historial:", error);
+      document.getElementById("tabla-historial").innerHTML = '<tr><td colspan="5" style="padding: 15px; text-align: center; color: #d32f2f;">Error de conexión al cargar historial.</td></tr>';
+    }
+  }
 
-                if (response.ok) {
-                    const driver = await response.json();
-                    document.getElementById("driverName").innerText = driver.full_name;
-                    document.getElementById("loginForm").style.display = "none";
-                    document.getElementById("radarSection").style.display = "block";
-                    conectarWebSocket();
-                } else {
-                    cerrarSesion();
-                }
-            } catch (err) {
-                cerrarSesion();
-            }
-        }
-
-        function conectarWebSocket() {
-            ws = new WebSocket("wss://volquetes-api.onrender.com/ws/fletes");
-
-            ws.onopen = () => {
-                document.getElementById("status").innerText = "En línea (Escuchando fletes)";
-            };
-
-            ws.onmessage = (event) => {
-                const data = JSON.parse(event.data);
-                if (data.evento === "NUEVO_FLETE") {
-                    renderizarTarjetaFlete(data);
-                }
-            };
-
-            ws.onclose = () => {
-                document.getElementById("status").innerText = "Desconectado";
-                document.getElementById("status").style.color = "red";
-            };
-        }
-
-        function renderizarTarjetaFlete(data) {
-            const contenedor = document.getElementById("alertas");
-            const nuevaAlerta = document.createElement("div");
-            nuevaAlerta.className = "alert-box";
-            nuevaAlerta.id = `flete-${data.order_id}`;
-            nuevaAlerta.innerHTML = `
-                <strong>🚨 ¡NUEVO FLETE DISPONIBLE! (#${data.order_id})</strong><br>
-                <strong>Origen:</strong> ${data.cantera}<br>
-                <strong>Destino:</strong> ${data.destino}<br>
-                <strong>Pago:</strong> S/ ${data.precio}<br>
-                <strong>Estado:</strong> <span id="estado-txt-${data.order_id}">Pendiente</span><br>
-                <div id="map-${data.order_id}" class="map-card"></div>
-                <div id="acciones-${data.order_id}">
-                    <button class="btn-action" onclick="tomarFlete(${data.order_id})" id="btn-${data.order_id}">⚡ Tomar Flete</button>
-                </div>
-            `;
-            contenedor.prepend(nuevaAlerta);
-
-            // Crear mapa de Leaflet para esta tarjeta
-            setTimeout(() => {
-                const map = L.map(`map-${data.order_id}`).setView([data.origin_lat, data.origin_lng], 12);
-                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
-
-                L.marker([data.origin_lat, data.origin_lng]).addTo(map).bindPopup("🚩 Cantera");
-                L.marker([data.dest_lat, data.dest_lng]).addTo(map).bindPopup("🏁 Obra");
-
-                L.polyline([
-                    [data.origin_lat, data.origin_lng],
-                    [data.dest_lat, data.dest_lng]
-                ], { color: '#007bff', weight: 4 }).addTo(map);
-
-                activeMaps[data.order_id] = {
-                    map: map,
-                    oLat: data.origin_lat,
-                    oLng: data.origin_lng,
-                    dLat: data.dest_lat,
-                    dLng: data.dest_lng
-                };
-            }, 200);
-        }
-
-        async function tomarFlete(orderId) {
-            const token = localStorage.getItem("jwt_token");
-            try {
-                const response = await fetch(`https://volquetes-api.onrender.com/api/orders/${orderId}/aceptar`, {
-                    method: "POST",
-                    headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" }
-                });
-
-                if (response.ok) {
-                    document.getElementById(`estado-txt-${orderId}`).innerText = "Asignado";
-                    document.getElementById(`acciones-${orderId}`).innerHTML = `
-                        <button class="btn-action btn-transit" onclick="iniciarViaje(${orderId})">🚛 Iniciar Viaje (GPS Active)</button>
-                    `;
-                }
-            } catch (error) { alert("Error al tomar flete"); }
-        }
-
-        async function iniciarViaje(orderId) {
-            const token = localStorage.getItem("jwt_token");
-            try {
-                const response = await fetch(`https://volquetes-api.onrender.com/api/orders/${orderId}/iniciar-viaje`, {
-                    method: "POST",
-                    headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" }
-                });
-
-                if (response.ok) {
-                    document.getElementById(`estado-txt-${orderId}`).innerText = "En Ruta 🚚 (Simulando GPS)";
-                    document.getElementById(`acciones-${orderId}`).innerHTML = `
-                        <button class="btn-action btn-complete" onclick="completarViaje(${orderId})">✅ Confirmar Entrega</button>
-                    `;
-
-                    // Simulación GPS de movimiento del volquete
-                    const mInfo = activeMaps[orderId];
-                    let step = 0;
-                    const totalSteps = 50;
-
-                    const truckIcon = L.divIcon({ html: '🚚', className: 'truck-icon', iconSize: [25, 25] });
-                    const truckMarker = L.marker([mInfo.oLat, mInfo.oLng], { icon: truckIcon }).addTo(mInfo.map);
-                    activeTruckMarkers[orderId] = truckMarker;
-
-                    activeIntervals[orderId] = setInterval(() => {
-                        step++;
-                        const currentLat = mInfo.oLat + (mInfo.dLat - mInfo.oLat) * (step / totalSteps);
-                        const currentLng = mInfo.oLng + (mInfo.dLng - mInfo.oLng) * (step / totalSteps);
-                        
-                        truckMarker.setLatLng([currentLat, currentLng]);
-
-                        if (step >= totalSteps) {
-                            clearInterval(activeIntervals[orderId]);
-                        }
-                    }, 300);
-                }
-            } catch (error) { alert("Error al iniciar viaje"); }
-        }
-
-        async function completarViaje(orderId) {
-            const token = localStorage.getItem("jwt_token");
-            try {
-                const response = await fetch(`https://volquetes-api.onrender.com/api/orders/${orderId}/completar-viaje`, {
-                    method: "POST",
-                    headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" }
-                });
-
-                if (response.ok) {
-                    if (activeIntervals[orderId]) clearInterval(activeIntervals[orderId]);
-                    document.getElementById(`estado-txt-${orderId}`).innerText = "Completado 🎉";
-                    document.getElementById(`acciones-${orderId}`).innerHTML = `
-                        <button class="btn-action btn-disabled" disabled>✓ Entrega Finalizada</button>
-                    `;
-                }
-            } catch (error) { alert("Error al completar viaje"); }
-        }
-
-        function cerrarSesion() {
-            localStorage.removeItem("jwt_token");
-            if (ws) ws.close();
-            document.getElementById("loginForm").style.display = "block";
-            document.getElementById("radarSection").style.display = "none";
-        }
-    </script>
+  function cerrarSesion() {
+    localStorage.removeItem("jwt_token");
+    window.location.reload();
+  }
+</script>
 </body>
 </html>
