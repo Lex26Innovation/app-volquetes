@@ -248,9 +248,8 @@ async def completar_viaje(
 @app.get("/api/orders/historial")
 def obtener_historial_conductor(
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(auth.get_current_user)
+    current_user = Depends(auth.get_current_user)
 ):
-    # Obtener viajes con estado completado
     viajes = db.query(models.Order).filter(
         models.Order.driver_id == current_user.id,
         models.Order.status == "completado"

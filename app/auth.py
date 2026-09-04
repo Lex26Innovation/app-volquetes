@@ -4,7 +4,7 @@ from passlib.context import CryptContext
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
-from app import database, models
+from .database import get_db
 
 SECRET_KEY = "clave_secreta_temporal_para_desarrollo"
 ALGORITHM = "HS256"
@@ -31,7 +31,9 @@ def crear_token_acceso(data: dict) -> str:
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
 
-def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(database.get_db)):
+def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+    from . import models
+
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="No se pudieron validar las credenciales",
