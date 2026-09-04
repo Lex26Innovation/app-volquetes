@@ -1,13 +1,12 @@
-from fastapi.middleware.cors import CORSMiddleware
-import jwt
 from typing import List
+import jwt
 from fastapi import FastAPI, Depends, HTTPException, status, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm, OAuth2PasswordBearer
 from sqlalchemy.orm import Session
+
 from .database import engine, get_db
 from . import models, schemas, auth
-import app.models as models
-from app.database import engine
 
 models.Base.metadata.create_all(bind=engine)
 
@@ -21,6 +20,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 # --- GESTOR DE WEBSOCKETS (ALERTAS EN TIEMPO REAL) ---
 
 class ConnectionManager:
@@ -65,7 +65,7 @@ def obtener_conductor_actual(token: str = Depends(oauth2_scheme), db: Session = 
         telefono: str = payload.get("sub")
         if telefono is None:
             raise excepcion_credenciales
-    except jwt.InvalidTokenError:
+    except Exception:
         raise excepcion_credenciales
     
     conductor = db.query(models.Driver).filter(models.Driver.contact_phone == telefono).first()
@@ -108,7 +108,7 @@ def ver_mi_perfil(conductor_actual: models.Driver = Depends(obtener_conductor_ac
 
 @app.post("/api/orders/publicar", tags=["Fletes"])
 async def publicar_flete(
-quarry_name: str,
+    quarry_name: str,
     delivery_address: str,
     total_price: float,
     origin_lat: float = -16.3533,
@@ -131,7 +131,6 @@ quarry_name: str,
     db.commit()
     db.refresh(orden)
     
-    # Alerta WebSocket con coordenadas para el mapa interactivo
     await manager.broadcast({
         "evento": "NUEVO_FLETE",
         "order_id": orden.id,
@@ -223,40 +222,52 @@ async def iniciar_viaje(
     })
     return {"mensaje": f"Flete #{order_id} en ruta", "estado": orden.status}
 
-@app.get("/api/historial-conductores")
+@app.get("/api/historial-conductores", tags=["Conductores"])
 def obtener_historial_conductor(
     db: Session = Depends(get_db),
-    current_user = Depends(auth.get_current_user)
+    conductor_actual: models.Driver = Depends(obtener_conductor_actual)
 ):
     try:
         viajes = db.query(models.Order).filter(
-            models.Order.driver_id == current_user.id,
+            models.Order.driver_id == conductor_actual.id,
             models.Order.status.in_(["completado", "completed"])
         ).all()
 
-        total_ganancias = sum((v.price or 0) for v in viajes)
-
         historial_lista = []
+        total_ganancias = 0.0
+
         for v in viajes:
-            fecha_str = v.created_at.strftime("%Y-%m-%d %H:%M") if getattr(v, 'created_at', None) else "N/A"
+            precio = float(getattr(v, "total_price", 0) or getattr(v, "price", 0) or 0)
+            destino = getattr(v, "delivery_address", None) or getattr(v, "destination", None) or "Sin destino"
+            cantera = getattr(v, "quarry_name", None) or "Cantera"
+            
+            fecha_obj = getattr(v, "created_at", None)
+            if hasattr(fecha_obj, "strftime"):
+                fecha_str = fecha_obj.strftime("%Y-%m-%d %H:%M")
+            elif fecha_obj:
+                fecha_str = str(fecha_obj)
+            else:
+                fecha_str = "N/A"
+
+            total_ganancias += precio
+
             historial_lista.append({
                 "id": v.id,
-                "quarry_name": getattr(v, "quarry_name", "N/A"),
-                "destination": getattr(v, "destination", "N/A"),
-                "price": v.price or 0,
+                "quarry_name": cantera,
+                "destination": destino,
+                "price": precio,
                 "created_at": fecha_str
             })
 
         return {
             "total_ganancias": total_ganancias,
-            "total_viajes": len(viajes),
+            "total_viajes": len(historial_lista),
             "historial": historial_lista
         }
     except Exception as e:
         print(f"Error procesando historial: {e}")
         return {"total_ganancias": 0, "total_viajes": 0, "historial": []}
 
-    
 @app.post("/api/orders/{order_id}/completar-viaje", tags=["Fletes"])
 async def completar_viaje(
     order_id: int, 
@@ -278,4 +289,3 @@ async def completar_viaje(
         "nuevo_estado": "completed"
     })
     return {"mensaje": f"Flete #{order_id} completado con éxito", "estado": orden.status}
-
