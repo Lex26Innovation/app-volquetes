@@ -118,65 +118,61 @@
     }
   }
 
-  async function cargarPerfil(token) {
-    try {
-      const res = await fetch("https://volquetes-api.onrender.com/api/historial-conductores", {
-        headers: { "Authorization": `Bearer ${token}` }
-      });
-      if (res.ok) {
-        const perfil = await res.json();
-        const nombre = perfil.full_name || perfil.nombre_completo || perfil.nombre || perfil.contact_phone || "Conductor";
-        document.getElementById("driverName").innerText = nombre;
-        document.getElementById("loginForm").style.display = "none";
-        document.getElementById("radarSection").style.display = "block";
-      }
-    } catch (e) {
-      console.error("Error cargando perfil", e);
+  // Cargar perfil (línea ~123)
+async function cargarPerfil(token) {
+  try {
+    const res = await fetch("https://volquetes-api.onrender.com/api/conductores/mi-perfil", {
+      headers: { "Authorization": `Bearer ${token}` }
+    });
+    if (res.ok) {
+      const perfil = await res.json();
+      const nombre = perfil.full_name || perfil.nombre_completo || perfil.nombre || perfil.contact_phone || "Conductor";
+      document.getElementById("driverName").innerText = nombre;
+      document.getElementById("loginForm").style.display = "none";
+      document.getElementById("radarSection").style.display = "block";
     }
+  } catch (e) {
+    console.error("Error cargando perfil", e);
   }
+}
 
-  async function cargarHistorial() {
-    const token = localStorage.getItem("jwt_token");
-    if (!token) return;
+// Cargar historial (línea ~143)
+async function cargarHistorial() {
+  const token = localStorage.getItem("jwt_token");
+  if (!token) return;
 
-    try {
-      const res = await fetch("https://volquetes-api.onrender.com/api/historial-conductores", {
-        headers: { "Authorization": `Bearer ${token}` }
-      });
+  try {
+    const res = await fetch("https://volquetes-api.onrender.com/api/historial-conductores", {
+      headers: { "Authorization": `Bearer ${token}` }
+    });
 
-      const tbody = document.getElementById("tabla-historial");
+    const tbody = document.getElementById("tabla-historial");
 
-      if (res.ok) {
-        const data = await res.json();
-        const ganancias = Number(data.total_ganancias || 0);
-        document.getElementById("total-ganancias").innerText = `S/ ${ganancias.toFixed(2)}`;
-        document.getElementById("total-viajes").innerText = data.total_viajes || 0;
+    if (res.ok) {
+      const data = await res.json();
+      const ganancias = Number(data.total_ganancias || 0);
+      document.getElementById("total-ganancias").innerText = `S/ ${ganancias.toFixed(2)}`;
+      document.getElementById("total-viajes").innerText = data.total_viajes || 0;
 
-        if (!data.historial || data.historial.length === 0) {
-          tbody.innerHTML = '<tr><td colspan="5" style="padding: 15px; text-align: center; color: #666;">No hay viajes completados aún.</td></tr>';
-          return;
-        }
-
-        tbody.innerHTML = data.historial.map(v => `
-          <tr style="border-bottom: 1px solid #eee;">
-            <td style="padding: 10px;">#${v.id}</td>
-            <td style="padding: 10px;">${v.quarry_name}</td>
-            <td style="padding: 10px;">${v.destination}</td>
-            <td style="padding: 10px; font-weight: bold; color: #2e7d32;">S/ ${v.price}</td>
-            <td style="padding: 10px;">${v.created_at}</td>
-          </tr>
-        `).join('');
-      } else {
-        const errorData = await res.text();
-        console.error("Detalle error:", res.status, errorData);
-        tbody.innerHTML = `<tr><td colspan="5" style="padding: 15px; text-align: center; color: #d32f2f;">No se pudo cargar el historial (Error HTTP ${res.status}).</td></tr>`;
+      if (!data.historial || data.historial.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" style="padding: 15px; text-align: center; color: #666;">No hay viajes completados aún.</td></tr>';
+        return;
       }
-    } catch (error) {
-      console.error("Error al cargar historial:", error);
-      document.getElementById("tabla-historial").innerHTML = '<tr><td colspan="5" style="padding: 15px; text-align: center; color: #d32f2f;">Error de conexión al cargar historial.</td></tr>';
-    }
-  }
 
+      tbody.innerHTML = data.historial.map(v => `
+        <tr style="border-bottom: 1px solid #eee;">
+          <td style="padding: 10px;">#${v.id}</td>
+          <td style="padding: 10px;">${v.quarry_name}</td>
+          <td style="padding: 10px;">${v.destination}</td>
+          <td style="padding: 10px; font-weight: bold; color: #2e7d32;">S/ ${v.price}</td>
+          <td style="padding: 10px;">${v.created_at}</td>
+        </tr>
+      `).join('');
+    }
+  } catch (error) {
+    console.error("Error al cargar historial:", error);
+  }
+}
   function cerrarSesion() {
     localStorage.removeItem("jwt_token");
     window.location.reload();

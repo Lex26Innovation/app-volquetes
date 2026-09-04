@@ -228,28 +228,35 @@ def obtener_historial_conductor(
     db: Session = Depends(get_db),
     current_user = Depends(auth.get_current_user)
 ):
-    viajes = db.query(models.Order).filter(
-        models.Order.driver_id == current_user.id,
-        models.Order.status == "completado"
-    ).all()
+    try:
+        viajes = db.query(models.Order).filter(
+            models.Order.driver_id == current_user.id,
+            models.Order.status.in_(["completado", "completed"])
+        ).all()
 
-    total_ganancias = sum(v.price for v in viajes)
+        total_ganancias = sum((v.price or 0) for v in viajes)
 
-    return {
-        "total_ganancias": total_ganancias,
-        "total_viajes": len(viajes),
-        "historial": [
-            {
+        historial_lista = []
+        for v in viajes:
+            fecha_str = v.created_at.strftime("%Y-%m-%d %H:%M") if getattr(v, 'created_at', None) else "N/A"
+            historial_lista.append({
                 "id": v.id,
-                "quarry_name": v.quarry_name,
-                "destination": v.destination,
-                "price": v.price,
-                "created_at": v.created_at.strftime("%Y-%m-%d %H:%M") if v.created_at else "N/A"
-            }
-            for v in viajes
-        ]
-    }
+                "quarry_name": getattr(v, "quarry_name", "N/A"),
+                "destination": getattr(v, "destination", "N/A"),
+                "price": v.price or 0,
+                "created_at": fecha_str
+            })
 
+        return {
+            "total_ganancias": total_ganancias,
+            "total_viajes": len(viajes),
+            "historial": historial_lista
+        }
+    except Exception as e:
+        print(f"Error procesando historial: {e}")
+        return {"total_ganancias": 0, "total_viajes": 0, "historial": []}
+
+    
 @app.post("/api/orders/{order_id}/completar-viaje", tags=["Fletes"])
 async def completar_viaje(
     order_id: int, 
