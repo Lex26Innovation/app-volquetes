@@ -223,28 +223,6 @@ async def iniciar_viaje(
     })
     return {"mensaje": f"Flete #{order_id} en ruta", "estado": orden.status}
 
-@app.post("/api/orders/{order_id}/completar-viaje", tags=["Fletes"])
-async def completar_viaje(
-    order_id: int, 
-    db: Session = Depends(get_db), 
-    conductor_actual: models.Driver = Depends(obtener_conductor_actual)
-):
-    orden = db.query(models.Order).filter(models.Order.id == order_id).first()
-    if not orden:
-        raise HTTPException(status_code=404, detail="Flete no encontrado")
-    if orden.driver_id != conductor_actual.id:
-        raise HTTPException(status_code=403, detail="No estás asignado a este flete")
-    
-    orden.status = "completed"
-    db.commit()
-
-    await manager.broadcast({
-        "evento": "CAMBIO_ESTADO",
-        "order_id": orden.id,
-        "nuevo_estado": "completed"
-    })
-    return {"mensaje": f"Flete #{order_id} completado con éxito", "estado": orden.status}
-
 @app.get("/api/orders/historial")
 def obtener_historial_conductor(
     db: Session = Depends(get_db),
@@ -271,3 +249,26 @@ def obtener_historial_conductor(
             for v in viajes
         ]
     }
+
+@app.post("/api/orders/{order_id}/completar-viaje", tags=["Fletes"])
+async def completar_viaje(
+    order_id: int, 
+    db: Session = Depends(get_db), 
+    conductor_actual: models.Driver = Depends(obtener_conductor_actual)
+):
+    orden = db.query(models.Order).filter(models.Order.id == order_id).first()
+    if not orden:
+        raise HTTPException(status_code=404, detail="Flete no encontrado")
+    if orden.driver_id != conductor_actual.id:
+        raise HTTPException(status_code=403, detail="No estás asignado a este flete")
+    
+    orden.status = "completed"
+    db.commit()
+
+    await manager.broadcast({
+        "evento": "CAMBIO_ESTADO",
+        "order_id": orden.id,
+        "nuevo_estado": "completed"
+    })
+    return {"mensaje": f"Flete #{order_id} completado con éxito", "estado": orden.status}
+
