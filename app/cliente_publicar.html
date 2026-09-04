@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Publicar Flete - Cantera (Con Mapa)</title>
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background-color: #f4f4f9; }
+        .container { display: flex; gap: 20px; max-width: 1000px; margin: auto; }
+        .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); flex: 1; }
+        #map { height: 400px; border-radius: 8px; border: 1px solid #ccc; flex: 1.2; }
+        input { width: 100%; padding: 8px; margin: 5px 0 10px 0; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; }
+        button { background-color: #007bff; color: white; border: none; padding: 12px; border-radius: 4px; cursor: pointer; font-weight: bold; width: 100%; font-size: 15px; }
+        button:hover { background-color: #0056b3; }
+        .instruction { font-size: 13px; color: #555; background: #e9ecef; padding: 8px; border-radius: 4px; margin-bottom: 10px; }
+        .success { color: green; font-weight: bold; margin-top: 10px; }
+    </style>
+</head>
+<body>
+    <h2 style="text-align: center;">🏗️ Portal Cantera - Publicación con Selección de Ruta en Mapa</h2>
+    <div class="container">
+        <div class="card">
+            <div class="instruction">
+                📍 <strong>Haz clic en el mapa de Arequipa:</strong><br>
+                • 1er Clic: Marca la Cantera (Origen 🚩)<br>
+                • 2do Clic: Marca la Obra (Destino 🏁)
+            </div>
+
+            <label>Cantera / Origen:</label>
+            <input type="text" id="quarry" value="Cantera Añashuayco">
+            
+            <label>Dirección de Entrega / Destino:</label>
+            <input type="text" id="delivery" value="Obra Cayma Mz A">
+            
+            <label>Precio del Flete (S/):</label>
+            <input type="number" id="price" value="250">
+
+            <button onclick="enviarFlete()">🚀 Lanza Alerta con Ruta</button>
+            <p id="mensaje" class="success"></p>
+        </div>
+
+        <div id="map"></div>
+    </div>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        // Inicializar mapa centrado en Arequipa
+        const map = L.map('map').setView([-16.409, -71.537], 12);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap'
+        }).addTo(map);
+
+        let originMarker = null;
+        let destMarker = null;
+        let routeLine = null;
+
+        // Puntos por defecto (Añashuayco a Cayma)
+        let originCoords = { lat: -16.3533, lng: -71.5831 };
+        let destCoords = { lat: -16.3683, lng: -71.5458 };
+
+        function actualizarMapa() {
+            if (originMarker) map.removeLayer(originMarker);
+            if (destMarker) map.removeLayer(destMarker);
+            if (routeLine) map.removeLayer(routeLine);
+
+            originMarker = L.marker([originCoords.lat, originCoords.lng]).addTo(map).bindPopup("🚩 Origen: Cantera").openPopup();
+            destMarker = L.marker([destCoords.lat, destCoords.lng]).addTo(map).bindPopup("🏁 Destino: Obra");
+
+            routeLine = L.polyline([
+                [originCoords.lat, originCoords.lng],
+                [destCoords.lat, destCoords.lng]
+            ], { color: 'blue', weight: 4, opacity: 0.7, dashArray: '8, 8' }).addTo(map);
+        }
+
+        actualizarMapa();
+
+        let modoOrigen = true;
+        map.on('click', (e) => {
+            if (modoOrigen) {
+                originCoords = { lat: e.latlng.lat, lng: e.latlng.lng };
+                modoOrigen = false;
+            } else {
+                destCoords = { lat: e.latlng.lat, lng: e.latlng.lng };
+                modoOrigen = true;
+            }
+            actualizarMapa();
+        });
+
+        async function enviarFlete() {
+            const quarry = document.getElementById("quarry").value;
+            const delivery = document.getElementById("delivery").value;
+            const price = document.getElementById("price").value;
+            const mensaje = document.getElementById("mensaje");
+
+            const url = `http://127.0.0.1:8000/api/orders/publicar?quarry_name=${encodeURIComponent(quarry)}&delivery_address=${encodeURIComponent(delivery)}&total_price=${price}&origin_lat=${originCoords.lat}&origin_lng=${originCoords.lng}&dest_lat=${destCoords.lat}&dest_lng=${destCoords.lng}`;
+
+            try {
+                const response = await fetch(url, { method: "POST" });
+                const data = await response.json();
+                
+                if (response.ok) {
+                    mensaje.innerText = `¡Flete #${data.order_id} transmitido con ruta!`;
+                } else {
+                    mensaje.innerText = "Error al publicar flete";
+                }
+            } catch (err) {
+                mensaje.innerText = "Error de conexión";
+            }
+        }
+    </script>
+</body>
+</html>

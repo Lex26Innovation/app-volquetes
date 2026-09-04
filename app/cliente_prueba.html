@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Radar de Fletes - Conductor (Modo GPS)</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background-color: #f4f4f9; }
+        .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); max-width: 650px; margin: auto; }
+        .status { font-weight: bold; color: green; }
+        .alert-box { margin-top: 15px; padding: 15px; background-color: #ffffff; border: 1px solid #ddd; border-left: 5px solid #2196f3; border-radius: 6px; }
+        .map-card { height: 220px; border-radius: 6px; margin-top: 10px; border: 1px solid #ccc; }
+        .login-section { margin-bottom: 20px; padding: 15px; background: #e8f5e9; border-radius: 6px; border: 1px solid #c8e6c9; }
+        input { width: 100%; padding: 8px; margin: 5px 0 10px 0; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; }
+        button { background-color: #28a745; color: white; border: none; padding: 10px 15px; border-radius: 4px; cursor: pointer; font-weight: bold; width: 100%; }
+        button:hover { background-color: #218838; }
+        .btn-action { width: auto; margin-top: 10px; margin-right: 5px; }
+        .btn-transit { background-color: #ffc107 !important; color: #212529 !important; }
+        .btn-complete { background-color: #17a2b8 !important; }
+        .btn-disabled { background-color: #6c757d !important; cursor: not-allowed; }
+        .logout-btn { background-color: #dc3545; padding: 5px 10px; font-size: 12px; width: auto; float: right; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h2>🚚 Radar GPS de Fletes en Vivo</h2>
+        
+        <div id="loginForm" class="login-section">
+            <h3>🔑 Iniciar Sesión Conductor</h3>
+            <label>Teléfono:</label>
+            <input type="text" id="phone" value="993970258">
+            <label>Contraseña:</label>
+            <input type="password" id="password" value="mientras2012">
+            <button onclick="iniciarSesion()">Ingresar al Radar</button>
+            <p id="loginError" style="color: red; margin-top: 5px; font-weight: bold;"></p>
+        </div>
+
+        <div id="radarSection" style="display: none;">
+            <button class="logout-btn" onclick="cerrarSesion()">Cerrar Sesión</button>
+            <p>Conductor: <strong id="driverName">...</strong></p>
+            <p>Estado del Radar: <span id="status" class="status">Conectando...</span></p>
+            <hr>
+            <div id="alertas">
+                <p><i>Esperando nuevos fletes publicados...</i></p>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        let ws;
+        const activeMaps = {};
+        const activeTruckMarkers = {};
+        const activeIntervals = {};
+
+        window.onload = () => {
+            const token = localStorage.getItem("jwt_token");
+            if (token) cargarPerfil(token);
+        };
+
+        async function iniciarSesion() {
+            const phone = document.getElementById("phone").value.trim();
+            const password = document.getElementById("password").value.trim();
+
+            const formData = new URLSearchParams();
+            formData.append("username", phone);
+            formData.append("password", password);
+
+            try {
+                const response = await fetch("http://127.0.0.1:8000/api/auth/login", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                    body: formData
+                });
+
+                const data = await response.json();
+                if (response.ok) {
+                    localStorage.setItem("jwt_token", data.access_token);
+                    cargarPerfil(data.access_token);
+                } else {
+                    document.getElementById("loginError").innerText = data.detail || "Error al autenticar";
+                }
+            } catch (err) {
+                document.getElementById("loginError").innerText = "Error de conexión";
+            }
+        }
+
+        async function cargarPerfil(token) {
+            try {
+                const response = await fetch("http://127.0.0.1:8000/api/conductores/mi-perfil", {
+                    headers: { "Authorization": `Bearer ${token}` }
+                });
+
+                if (response.ok) {
+                    const driver = await response.json();
+                    document.getElementById("driverName").innerText = driver.full_name;
+                    document.getElementById("loginForm").style.display = "none";
+                    document.getElementById("radarSection").style.display = "block";
+                    conectarWebSocket();
+                } else {
+                    cerrarSesion();
+                }
+            } catch (err) {
+                cerrarSesion();
+            }
+        }
+
+        function conectarWebSocket() {
+            ws = new WebSocket("ws://127.0.0.1:8000/ws/fletes");
+
+            ws.onopen = () => {
+                document.getElementById("status").innerText = "En línea (Escuchando fletes)";
+            };
+
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                if (data.evento === "NUEVO_FLETE") {
+                    renderizarTarjetaFlete(data);
+                }
+            };
+
+            ws.onclose = () => {
+                document.getElementById("status").innerText = "Desconectado";
+                document.getElementById("status").style.color = "red";
+            };
+        }
+
+        function renderizarTarjetaFlete(data) {
+            const contenedor = document.getElementById("alertas");
+            const nuevaAlerta = document.createElement("div");
+            nuevaAlerta.className = "alert-box";
+            nuevaAlerta.id = `flete-${data.order_id}`;
+            nuevaAlerta.innerHTML = `
+                <strong>🚨 ¡NUEVO FLETE DISPONIBLE! (#${data.order_id})</strong><br>
+                <strong>Origen:</strong> ${data.cantera}<br>
+                <strong>Destino:</strong> ${data.destino}<br>
+                <strong>Pago:</strong> S/ ${data.precio}<br>
+                <strong>Estado:</strong> <span id="estado-txt-${data.order_id}">Pendiente</span><br>
+                <div id="map-${data.order_id}" class="map-card"></div>
+                <div id="acciones-${data.order_id}">
+                    <button class="btn-action" onclick="tomarFlete(${data.order_id})" id="btn-${data.order_id}">⚡ Tomar Flete</button>
+                </div>
+            `;
+            contenedor.prepend(nuevaAlerta);
+
+            // Crear mapa de Leaflet para esta tarjeta
+            setTimeout(() => {
+                const map = L.map(`map-${data.order_id}`).setView([data.origin_lat, data.origin_lng], 12);
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+                L.marker([data.origin_lat, data.origin_lng]).addTo(map).bindPopup("🚩 Cantera");
+                L.marker([data.dest_lat, data.dest_lng]).addTo(map).bindPopup("🏁 Obra");
+
+                L.polyline([
+                    [data.origin_lat, data.origin_lng],
+                    [data.dest_lat, data.dest_lng]
+                ], { color: '#007bff', weight: 4 }).addTo(map);
+
+                activeMaps[data.order_id] = {
+                    map: map,
+                    oLat: data.origin_lat,
+                    oLng: data.origin_lng,
+                    dLat: data.dest_lat,
+                    dLng: data.dest_lng
+                };
+            }, 200);
+        }
+
+        async function tomarFlete(orderId) {
+            const token = localStorage.getItem("jwt_token");
+            try {
+                const response = await fetch(`http://127.0.0.1:8000/api/orders/${orderId}/aceptar`, {
+                    method: "POST",
+                    headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" }
+                });
+
+                if (response.ok) {
+                    document.getElementById(`estado-txt-${orderId}`).innerText = "Asignado";
+                    document.getElementById(`acciones-${orderId}`).innerHTML = `
+                        <button class="btn-action btn-transit" onclick="iniciarViaje(${orderId})">🚛 Iniciar Viaje (GPS Active)</button>
+                    `;
+                }
+            } catch (error) { alert("Error al tomar flete"); }
+        }
+
+        async function iniciarViaje(orderId) {
+            const token = localStorage.getItem("jwt_token");
+            try {
+                const response = await fetch(`http://127.0.0.1:8000/api/orders/${orderId}/iniciar-viaje`, {
+                    method: "POST",
+                    headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" }
+                });
+
+                if (response.ok) {
+                    document.getElementById(`estado-txt-${orderId}`).innerText = "En Ruta 🚚 (Simulando GPS)";
+                    document.getElementById(`acciones-${orderId}`).innerHTML = `
+                        <button class="btn-action btn-complete" onclick="completarViaje(${orderId})">✅ Confirmar Entrega</button>
+                    `;
+
+                    // Simulación GPS de movimiento del volquete
+                    const mInfo = activeMaps[orderId];
+                    let step = 0;
+                    const totalSteps = 50;
+
+                    const truckIcon = L.divIcon({ html: '🚚', className: 'truck-icon', iconSize: [25, 25] });
+                    const truckMarker = L.marker([mInfo.oLat, mInfo.oLng], { icon: truckIcon }).addTo(mInfo.map);
+                    activeTruckMarkers[orderId] = truckMarker;
+
+                    activeIntervals[orderId] = setInterval(() => {
+                        step++;
+                        const currentLat = mInfo.oLat + (mInfo.dLat - mInfo.oLat) * (step / totalSteps);
+                        const currentLng = mInfo.oLng + (mInfo.dLng - mInfo.oLng) * (step / totalSteps);
+                        
+                        truckMarker.setLatLng([currentLat, currentLng]);
+
+                        if (step >= totalSteps) {
+                            clearInterval(activeIntervals[orderId]);
+                        }
+                    }, 300);
+                }
+            } catch (error) { alert("Error al iniciar viaje"); }
+        }
+
+        async function completarViaje(orderId) {
+            const token = localStorage.getItem("jwt_token");
+            try {
+                const response = await fetch(`http://127.0.0.1:8000/api/orders/${orderId}/completar-viaje`, {
+                    method: "POST",
+                    headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" }
+                });
+
+                if (response.ok) {
+                    if (activeIntervals[orderId]) clearInterval(activeIntervals[orderId]);
+                    document.getElementById(`estado-txt-${orderId}`).innerText = "Completado 🎉";
+                    document.getElementById(`acciones-${orderId}`).innerHTML = `
+                        <button class="btn-action btn-disabled" disabled>✓ Entrega Finalizada</button>
+                    `;
+                }
+            } catch (error) { alert("Error al completar viaje"); }
+        }
+
+        function cerrarSesion() {
+            localStorage.removeItem("jwt_token");
+            if (ws) ws.close();
+            document.getElementById("loginForm").style.display = "block";
+            document.getElementById("radarSection").style.display = "none";
+        }
+    </script>
+</body>
+</html>
