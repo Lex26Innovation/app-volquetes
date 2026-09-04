@@ -87,7 +87,7 @@
 
         async function cargarPerfil(token) {
             try {
-                const response = await fetch("http://127.0.0.1:8000/api/conductores/mi-perfil", {
+                const response = await fetch("https://volquetes-api.onrender.com/api/conductores/mi-perfil", {
                     headers: { "Authorization": `Bearer ${token}` }
                 });
 
@@ -106,7 +106,7 @@
         }
 
         function conectarWebSocket() {
-            ws = new WebSocket("ws://volquetes-api.onrender.com/ws/fletes");
+            ws = new WebSocket("wss://volquetes-api.onrender.com/ws/fletes");
 
             ws.onopen = () => {
                 document.getElementById("status").innerText = "En línea (Escuchando fletes)";
@@ -169,7 +169,7 @@
         async function tomarFlete(orderId) {
             const token = localStorage.getItem("jwt_token");
             try {
-                const response = await fetch(`http://127.0.0.1:8000/api/orders/${orderId}/aceptar`, {
+                const response = await fetch(`https://volquetes-api.onrender.com/api/orders/${orderId}/aceptar`, {
                     method: "POST",
                     headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" }
                 });
@@ -186,7 +186,7 @@
         async function iniciarViaje(orderId) {
             const token = localStorage.getItem("jwt_token");
             try {
-                const response = await fetch(`http://127.0.0.1:8000/api/orders/${orderId}/iniciar-viaje`, {
+                const response = await fetch(`https://volquetes-api.onrender.com/api/orders/${orderId}/iniciar-viaje`, {
                     method: "POST",
                     headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" }
                 });
@@ -224,7 +224,7 @@
         async function completarViaje(orderId) {
             const token = localStorage.getItem("jwt_token");
             try {
-                const response = await fetch(`http://127.0.0.1:8000/api/orders/${orderId}/completar-viaje`, {
+                const response = await fetch(`https://volquetes-api.onrender.com/api/orders/${orderId}/completar-viaje`, {
                     method: "POST",
                     headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" }
                 });

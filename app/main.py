@@ -244,3 +244,31 @@ async def completar_viaje(
         "nuevo_estado": "completed"
     })
     return {"mensaje": f"Flete #{order_id} completado con éxito", "estado": orden.status}
+
+@app.get("/api/orders/historial")
+def obtener_historial_conductor(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    # Obtener viajes con estado completado
+    viajes = db.query(models.Order).filter(
+        models.Order.driver_id == current_user.id,
+        models.Order.status == "completado"
+    ).all()
+
+    total_ganancias = sum(v.price for v in viajes)
+
+    return {
+        "total_ganancias": total_ganancias,
+        "total_viajes": len(viajes),
+        "historial": [
+            {
+                "id": v.id,
+                "quarry_name": v.quarry_name,
+                "destination": v.destination,
+                "price": v.price,
+                "created_at": v.created_at.strftime("%Y-%m-%d %H:%M") if v.created_at else "N/A"
+            }
+            for v in viajes
+        ]
+    }
