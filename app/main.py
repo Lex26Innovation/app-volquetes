@@ -46,7 +46,19 @@ async def websocket_endpoint(websocket: WebSocket):
     await manager.connect(websocket)
     try:
         while True:
-            await websocket.receive_text()
+            # Escucha mensajes enviados por clientes o conductores
+            data = await websocket.receive_text()
+            import json
+            mensaje = json.loads(data)
+
+            # Si el conductor envía su posición GPS, la retransmitimos en vivo
+            if mensaje.get("evento") == "ACTUALIZAR_UBICACION":
+                await manager.broadcast({
+                    "evento": "UBICACION_CONDUCTOR",
+                    "order_id": mensaje.get("order_id"),
+                    "lat": mensaje.get("lat"),
+                    "lng": mensaje.get("lng")
+                })
     except WebSocketDisconnect:
         manager.disconnect(websocket)
 
