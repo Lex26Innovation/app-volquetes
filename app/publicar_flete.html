@@ -106,12 +106,11 @@
                 <p style="margin:5px 0;"><strong>Estado:</strong> 
                     <span id="badge-${id}" class="status-badge badge-pending">🔍 Buscando Conductor...</span>
                 </p>
-                <p id="gps-log-${id}" class="gps-log">📡 Esperando inicio de viaje del conductor...</p>
+                <p id="gps-log-${id}" class="gps-log">📡 Esperando señal GPS...</p>
                 <div id="mapa-cantera-${id}" class="map-box"></div>
             `;
             contenedor.prepend(div);
 
-            // Carga el mapa de inmediato al crear la tarjeta
             setTimeout(() => {
                 mapas[id] = L.map(`mapa-cantera-${id}`).setView([-16.3673, -71.5691], 15);
                 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapas[id]);
@@ -120,9 +119,8 @@
         }
 
         function actualizarEstadoFlete(data) {
-            const id = data.order_id;
+            const id = parseInt(data.order_id);
             const badge = document.getElementById(`badge-${id}`);
-
             if (!badge) return;
 
             if (data.nuevo_estado === "assigned") {
@@ -142,6 +140,13 @@
             const lat = parseFloat(data.lat);
             const lng = parseFloat(data.lng);
             const nuevaPos = [lat, lng];
+
+            // Forzar actualización visual si está recibiendo coordenadas
+            const badge = document.getElementById(`badge-${id}`);
+            if (badge && badge.innerText.includes("Buscando")) {
+                badge.className = "status-badge badge-transit";
+                badge.innerText = "🚚 Camión en Ruta (GPS Activo)";
+            }
 
             const logEl = document.getElementById(`gps-log-${id}`);
             if (logEl) {

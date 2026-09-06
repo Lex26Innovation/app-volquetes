@@ -32,11 +32,16 @@ class ConnectionManager:
             self.active_connections.remove(websocket)
 
     async def broadcast(self, message: dict):
+        # Limpia automáticamente conexiones cerradas para no congelar las transmisiones
+        desconectados = []
         for connection in self.active_connections:
             try:
                 await connection.send_json(message)
             except Exception:
-                pass
+                desconectados.append(connection)
+        
+        for conn in desconectados:
+            self.disconnect(conn)
 
 manager = ConnectionManager()
 
@@ -116,6 +121,7 @@ async def websocket_endpoint(websocket: WebSocket):
         while True:
             data = await websocket.receive_text()
             mensaje = json.loads(data)
+            
             if mensaje.get("evento") == "ACTUALIZAR_UBICACION":
                 await manager.broadcast({
                     "evento": "UBICACION_CONDUCTOR",
@@ -123,5 +129,9 @@ async def websocket_endpoint(websocket: WebSocket):
                     "lat": mensaje.get("lat"),
                     "lng": mensaje.get("lng")
                 })
+            elif mensaje.get("evento") == "CAMBIO_ESTADO":
+                await manager.broadcast(mensaje)
     except WebSocketDisconnect:
+        manager.disconnect(websocket)
+    except Exception:
         manager.disconnect(websocket)
