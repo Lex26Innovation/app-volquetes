@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Publicar Flete - Cantera / Cliente</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background-color: #f4f4f9; }
+        .container { max-width: 650px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        input, select, button { width: 100%; padding: 10px; margin: 8px 0; box-sizing: border-box; border-radius: 4px; border: 1px solid #ccc; }
+        button { background-color: #0288d1; color: white; border: none; font-weight: bold; cursor: pointer; }
+        button:hover { background-color: #01579b; }
+        .status-badge { padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 13px; display: inline-block; }
+        .badge-pending { background-color: #fff3e0; color: #e65100; }
+        .badge-assigned { background-color: #e3f2fd; color: #1565c0; }
+        .badge-transit { background-color: #fff8e1; color: #f57f17; }
+        .badge-completed { background-color: #e8f5e9; color: #2e7d32; }
+        .flete-card { border: 1px solid #ddd; padding: 15px; border-radius: 6px; margin-top: 10px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>🏗️ Panel Cantera / Cliente - Publicar Flete</h2>
+        
+        <form id="form-flete">
+            <label>Cantera / Origen:</label>
+            <input type="text" id="quarry_name" value="Cantera Añashuayco" required>
+
+            <label>Dirección Destino / Obra:</label>
+            <input type="text" id="delivery_address" value="Obra Yanahuara" required>
+
+            <label>Precio del Flete (S/):</label>
+            <input type="number" id="total_price" value="300" required>
+
+            <button type="button" onclick="publicarFlete()">🚀 Publicar Flete en Vivo</button>
+        </form>
+
+        <hr style="margin: 20px 0;">
+
+        <h3>📡 Estado de mis Fletes en Tiempo Real</h3>
+        <p>Estado WebSocket: <span id="ws-status" style="font-weight:bold; color:orange;">Conectando...</span></p>
+        
+        <div id="lista-fletes">
+            <p style="color:#777;"><i>No has publicado fletes en esta sesión aún...</i></p>
+        </div>
+    </div>
+
+    <script>
+        let ws;
+
+        window.onload = () => {
+            conectarWebSocket();
+        };
+
+        function conectarWebSocket() {
+            const wsStatus = document.getElementById("ws-status");
+            ws = new WebSocket("wss://volquetes-api.onrender.com/ws/fletes");
+
+            ws.onopen = () => {
+                wsStatus.innerText = "Conectado";
+                wsStatus.style.color = "#2e7d32";
+            };
+
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                console.log("Evento recibido en Cantera:", data);
+
+                if (data.evento === "CAMBIO_ESTADO") {
+                    actualizarEstadoFlete(data);
+                }
+            };
+
+            ws.onerror = () => {
+                wsStatus.innerText = "Error";
+                wsStatus.style.color = "#d32f2f";
+            };
+
+            ws.onclose = () => {
+                wsStatus.innerText = "Reconectando...";
+                wsStatus.style.color = "#ed6c02";
+                setTimeout(conectarWebSocket, 3000);
+            };
+        }
+
+        async function publicarFlete() {
+            const quarry = document.getElementById("quarry_name").value;
+            const address = document.getElementById("delivery_address").value;
+            const price = document.getElementById("total_price").value;
+
+            const url = `https://volquetes-api.onrender.com/api/orders/publicar?quarry_name=${encodeURIComponent(quarry)}&delivery_address=${encodeURIComponent(address)}&total_price=${price}`;
+
+            try {
+                const res = await fetch(url, { method: "POST" });
+                const data = await res.json();
+                
+                if (res.ok) {
+                    alert(`Flete #${data.order_id} publicado con éxito`);
+                    agregarFleteALista(data.order_id, quarry, address, price);
+                } else {
+                    alert("Error al publicar el flete");
+                }
+            } catch (e) {
+                alert("Error de red al publicar");
+            }
+        }
+
+        function agregarFleteALista(id, quarry, address, price) {
+            const contenedor = document.getElementById("lista-fletes");
+            if (contenedor.querySelector("i")) contenedor.innerHTML = "";
+
+            const div = document.createElement("div");
+            div.className = "flete-card";
+            div.id = `flete-cantera-${id}`;
+            div.innerHTML = `
+                <h4 style="margin:0;">Flete #${id} - S/ ${price}</h4>
+                <p style="margin:5px 0;"><strong>Ruta:</strong> ${quarry} ➔ ${address}</p>
+                <p style="margin:5px 0;"><strong>Estado:</strong> 
+                    <span id="badge-${id}" class="status-badge badge-pending">🔍 Buscando Conductor...</span>
+                </p>
+                <p id="info-driver-${id}" style="margin:5px 0; color:#555; display:none;"></p>
+            `;
+            contenedor.prepend(div);
+        }
+
+        function actualizarEstadoFlete(data) {
+            const badge = document.getElementById(`badge-${data.order_id}`);
+            const infoDriver = document.getElementById(`info-driver-${data.order_id}`);
+
+            if (!badge) return;
+
+            if (data.nuevo_estado === "assigned") {
+                badge.className = "status-badge badge-assigned";
+                badge.innerText = "✅ Aceptado por Conductor";
+                if (infoDriver && data.conductor_nombre) {
+                    infoDriver.style.display = "block";
+                    infoDriver.innerText = `Conductor: ${data.conductor_nombre} (Placa: ${data.conductor_placa || 'N/A'})`;
+                }
+            } else if (data.nuevo_estado === "in_transit") {
+                badge.className = "status-badge badge-transit";
+                badge.innerText = "🚚 Camión en Ruta...";
+            } else if (data.nuevo_estado === "completed") {
+                badge.className = "status-badge badge-completed";
+                badge.innerText = "🎉 Flete Entregado y Completado";
+            }
+        }
+    </script>
+</body>
+</html>
