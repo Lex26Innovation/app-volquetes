@@ -8,17 +8,17 @@
         body { font-family: Arial, sans-serif; margin: 20px; background-color: #f4f4f9; }
         .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); max-width: 650px; margin: auto; }
         .status { font-weight: bold; color: green; }
-        .alert-box { margin-top: 15px; padding: 15px; background-color: #ffffff; border: 1px solid #ddd; border-left: 5px solid #2196f3; border-radius: 6px; }
-        .map-card { height: 220px; border-radius: 6px; margin-top: 10px; border: 1px solid #ccc; }
         .login-section { margin-bottom: 20px; padding: 15px; background: #e8f5e9; border-radius: 6px; border: 1px solid #c8e6c9; }
         input { width: 100%; padding: 8px; margin: 5px 0 10px 0; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; }
         button { background-color: #28a745; color: white; border: none; padding: 10px 15px; border-radius: 4px; cursor: pointer; font-weight: bold; width: 100%; }
         button:hover { background-color: #218838; }
-        .btn-action { width: auto; margin-top: 10px; margin-right: 5px; }
-        .btn-transit { background-color: #ffc107 !important; color: #212529 !important; }
-        .btn-complete { background-color: #17a2b8 !important; }
-        .btn-disabled { background-color: #6c757d !important; cursor: not-allowed; }
         .logout-btn { background-color: #dc3545; padding: 5px 10px; font-size: 12px; width: auto; float: right; }
+        .flete-card { background: #fff3e0; border: 1px solid #ffe0b2; padding: 15px; border-radius: 8px; margin-top: 15px; }
+        .active-card { background: #e3f2fd; border: 1px solid #90caf9; padding: 15px; border-radius: 8px; margin-top: 15px; }
+        .map-box { height: 220px; width: 100%; border-radius: 6px; margin: 10px 0; border: 1px solid #ccc; }
+        .btn-blue { background-color: #0288d1; margin-top: 5px; }
+        .btn-warning { background-color: #f57c00; margin-top: 5px; }
+        .btn-success { background-color: #388e3c; margin-top: 5px; }
     </style>
 </head>
 <body>
@@ -38,150 +38,271 @@
         <div id="radarSection" style="display: none;">
             <button class="logout-btn" onclick="cerrarSesion()">Cerrar Sesión</button>
             <p>Conductor: <strong id="driverName">...</strong></p>
-            <p>Estado del Radar: <span id="status" class="status">Conectando...</span></p>
+            <p>Estado del Radar: <span id="status" class="status">Desconectado</span></p>
             <hr>
-            <div id="alertas">
-                <p><i>Esperando nuevos fletes publicados...</i></p>
-                <!-- Sección de Resumen de Ganancias e Historial -->
-<div style="margin-top: 20px; display: flex; gap: 15px;">
-  <div style="background: #e8f5e9; padding: 15px; border-radius: 8px; flex: 1; text-align: center;">
-    <h4 style="margin: 0; color: #2e7d32;">Ganancias Totales</h4>
-    <p id="total-ganancias" style="font-size: 22px; font-weight: bold; margin: 5px 0 0; color: #1b5e20;">S/ 0.00</p>
-  </div>
-  <div style="background: #e3f2fd; padding: 15px; border-radius: 8px; flex: 1; text-align: center;">
-    <h4 style="margin: 0; color: #1565c0;">Viajes Completados</h4>
-    <p id="total-viajes" style="font-size: 22px; font-weight: bold; margin: 5px 0 0; color: #0d47a1;">0</p>
-  </div>
-</div>
+            
+            <div id="flete-activo-container"></div>
+            <div id="fletes-envivo"></div>
 
-<h3 style="margin-top: 25px;">Historial de Fletes</h3>
-<table style="width: 100%; border-collapse: collapse; margin-top: 10px;">
-  <thead>
-    <tr style="background: #f5f5f5; text-align: left;">
-      <th style="padding: 10px; border-bottom: 2px solid #ddd;">ID</th>
-      <th style="padding: 10px; border-bottom: 2px solid #ddd;">Origen</th>
-      <th style="padding: 10px; border-bottom: 2px solid #ddd;">Destino</th>
-      <th style="padding: 10px; border-bottom: 2px solid #ddd;">Monto</th>
-      <th style="padding: 10px; border-bottom: 2px solid #ddd;">Fecha</th>
-    </tr>
-  </thead>
-  <tbody id="tabla-historial">
-    <tr>
-      <td colspan="5" style="padding: 15px; text-align: center; color: #666;">Cargando historial...</td>
-    </tr>
-  </tbody>
-</table>
+            <p id="esperando-msg"><i>Esperando nuevos fletes publicados...</i></p>
+
+            <!-- Resumen de Ganancias e Historial -->
+            <div style="margin-top: 20px; display: flex; gap: 15px;">
+                <div style="background: #e8f5e9; padding: 15px; border-radius: 8px; flex: 1; text-align: center;">
+                    <h4 style="margin: 0; color: #2e7d32;">Ganancias Totales</h4>
+                    <p id="total-ganancias" style="font-size: 22px; font-weight: bold; margin: 5px 0 0; color: #1b5e20;">S/ 0.00</p>
+                </div>
+                <div style="background: #e3f2fd; padding: 15px; border-radius: 8px; flex: 1; text-align: center;">
+                    <h4 style="margin: 0; color: #1565c0;">Viajes Completados</h4>
+                    <p id="total-viajes" style="font-size: 22px; font-weight: bold; margin: 5px 0 0; color: #0d47a1;">0</p>
+                </div>
             </div>
+
+            <h3 style="margin-top: 25px;">Historial de Fletes</h3>
+            <table style="width: 100%; border-collapse: collapse; margin-top: 10px;">
+                <thead>
+                    <tr style="background: #f5f5f5; text-align: left;">
+                        <th style="padding: 10px; border-bottom: 2px solid #ddd;">ID</th>
+                        <th style="padding: 10px; border-bottom: 2px solid #ddd;">Origen</th>
+                        <th style="padding: 10px; border-bottom: 2px solid #ddd;">Destino</th>
+                        <th style="padding: 10px; border-bottom: 2px solid #ddd;">Monto</th>
+                        <th style="padding: 10px; border-bottom: 2px solid #ddd;">Fecha</th>
+                    </tr>
+                </thead>
+                <tbody id="tabla-historial">
+                    <tr><td colspan="5" style="padding: 15px; text-align: center; color: #666;">Cargando historial...</td></tr>
+                </tbody>
+            </table>
         </div>
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script>
-  let ws;
-  const activeMaps = {};
-  const activeTruckMarkers = {};
-  const activeIntervals = {};
+    <script>
+        let ws;
+        let mapInstance = null;
 
-  window.onload = () => {
-    const token = localStorage.getItem("jwt_token");
-    if (token) {
-      cargarPerfil(token);
-      cargarHistorial();
-    }
-  };
+        window.onload = () => {
+            const token = localStorage.getItem("jwt_token");
+            if (token) {
+                cargarPerfil(token);
+                cargarHistorial();
+                conectarWebSocket();
+            }
+        };
 
-  async function iniciarSesion() {
-    const phone = document.getElementById("phone").value.trim();
-    const password = document.getElementById("password").value.trim();
+        function conectarWebSocket() {
+            const statusEl = document.getElementById("status");
+            ws = new WebSocket("wss://volquetes-api.onrender.com/ws/fletes");
 
-    const formData = new URLSearchParams();
-    formData.append("username", phone);
-    formData.append("password", password);
+            ws.onopen = () => {
+                if (statusEl) {
+                    statusEl.innerText = "Conectado";
+                    statusEl.style.color = "#2e7d32";
+                }
+            };
 
-    try {
-      // 1. URL DE AUTENTICACIÓN (LOGIN)
-      const response = await fetch("https://volquetes-api.onrender.com/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: formData
-      });
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                if (data.evento === "NUEVO_FLETE") {
+                    mostrarNuevoFlete(data);
+                }
+            };
 
-      const data = await response.json();
-      if (response.ok) {
-        localStorage.setItem("jwt_token", data.access_token);
-        cargarPerfil(data.access_token);
-        cargarHistorial();
-      } else {
-        document.getElementById("loginError").innerText = data.detail || "Error al autenticar";
-      }
-    } catch (err) {
-      document.getElementById("loginError").innerText = "Error de conexión";
-    }
-  }
+            ws.onerror = () => {
+                if (statusEl) {
+                    statusEl.innerText = "Error de conexión";
+                    statusEl.style.color = "#d32f2f";
+                }
+            };
 
-  async function cargarPerfil(token) {
-    try {
-      // 2. URL DE PERFIL
-      const res = await fetch("https://volquetes-api.onrender.com/api/conductores/mi-perfil", {
-        headers: { "Authorization": `Bearer ${token}` }
-      });
-      if (res.ok) {
-        const perfil = await res.json();
-        const nombre = perfil.full_name || perfil.nombre_completo || perfil.nombre || perfil.contact_phone || "Conductor";
-        document.getElementById("driverName").innerText = nombre;
-        document.getElementById("loginForm").style.display = "none";
-        document.getElementById("radarSection").style.display = "block";
-      }
-    } catch (e) {
-      console.error("Error cargando perfil", e);
-    }
-  }
-
-  async function cargarHistorial() {
-    const token = localStorage.getItem("jwt_token");
-    if (!token) return;
-
-    try {
-      // 3. URL DE HISTORIAL
-      const res = await fetch("https://volquetes-api.onrender.com/api/historial-conductores", {
-        headers: { "Authorization": `Bearer ${token}` }
-      });
-
-      const tbody = document.getElementById("tabla-historial");
-
-      if (res.ok) {
-        const data = await res.json();
-        const ganancias = Number(data.total_ganancias || 0);
-        document.getElementById("total-ganancias").innerText = `S/ ${ganancias.toFixed(2)}`;
-        document.getElementById("total-viajes").innerText = data.total_viajes || 0;
-
-        if (!data.historial || data.historial.length === 0) {
-          tbody.innerHTML = '<tr><td colspan="5" style="padding: 15px; text-align: center; color: #666;">No hay viajes completados aún.</td></tr>';
-          return;
+            ws.onclose = () => {
+                if (statusEl) {
+                    statusEl.innerText = "Reconectando...";
+                    statusEl.style.color = "#ed6c02";
+                }
+                setTimeout(conectarWebSocket, 3000);
+            };
         }
 
-        tbody.innerHTML = data.historial.map(v => `
-          <tr style="border-bottom: 1px solid #eee;">
-            <td style="padding: 10px;">#${v.id}</td>
-            <td style="padding: 10px;">${v.quarry_name}</td>
-            <td style="padding: 10px;">${v.destination}</td>
-            <td style="padding: 10px; font-weight: bold; color: #2e7d32;">S/ ${v.price}</td>
-            <td style="padding: 10px;">${v.created_at}</td>
-          </tr>
-        `).join('');
-      } else {
-        tbody.innerHTML = '<tr><td colspan="5" style="padding: 15px; text-align: center; color: #d32f2f;">No se pudo cargar el historial.</td></tr>';
-      }
-    } catch (error) {
-      console.error("Error al cargar historial:", error);
-      document.getElementById("tabla-historial").innerHTML = '<tr><td colspan="5" style="padding: 15px; text-align: center; color: #d32f2f;">Error de conexión al cargar historial.</td></tr>';
-    }
-  }
+        function mostrarNuevoFlete(flete) {
+            const contenedor = document.getElementById("fletes-envivo");
+            const msgEsperando = document.getElementById("esperando-msg");
+            if (msgEsperando) msgEsperando.style.display = "none";
 
-  function cerrarSesion() {
-    localStorage.removeItem("jwt_token");
-    window.location.reload();
-  }
-</script>
+            const div = document.createElement("div");
+            div.className = "flete-card";
+            div.id = `flete-${flete.order_id}`;
+            div.innerHTML = `
+                <h4 style="margin:0 0 10px 0; color:#e65100;">🚨 Nuevo Flete #${flete.order_id}</h4>
+                <p><strong>Origen:</strong> ${flete.cantera}</p>
+                <p><strong>Destino:</strong> ${flete.destino}</p>
+                <p><strong>Pago:</strong> <span style="color:#2e7d32; font-weight:bold;">S/ ${flete.precio}</span></p>
+                <button class="btn-blue" onclick='aceptarYMostrarMapa(${JSON.stringify(flete)})'>Aceptar Flete</button>
+            `;
+            contenedor.prepend(div);
+        }
+
+        async function aceptarYMostrarMapa(flete) {
+            const token = localStorage.getItem("jwt_token");
+            try {
+                const res = await fetch(`https://volquetes-api.onrender.com/api/orders/${flete.order_id}/aceptar`, {
+                    method: "POST",
+                    headers: { "Authorization": `Bearer ${token}` }
+                });
+                if (res.ok) {
+                    const card = document.getElementById(`flete-${flete.order_id}`);
+                    if (card) card.remove();
+                    desplegarViajeActivo(flete);
+                } else {
+                    const err = await res.json();
+                    alert(err.detail || "No se pudo aceptar el flete");
+                }
+            } catch (e) {
+                alert("Error al conectar con el servidor");
+            }
+        }
+
+        function desplegarViajeActivo(flete) {
+            const container = document.getElementById("flete-activo-container");
+            container.innerHTML = `
+                <div class="active-card" id="card-activo">
+                    <h3 style="margin:0; color:#1565c0;">📍 Viaje en Curso #${flete.order_id}</h3>
+                    <p style="margin:5px 0;">Ruta: <strong>${flete.cantera}</strong> ➔ <strong>${flete.destino}</strong></p>
+                    <p style="margin:5px 0;">Monto: <strong style="color:#2e7d32;">S/ ${flete.precio}</strong></p>
+                    
+                    <div id="mapa-activo" class="map-box"></div>
+
+                    <button id="btn-iniciar" class="btn-warning" onclick="iniciarViaje(${flete.order_id})">🚚 Iniciar Viaje (En Ruta)</button>
+                    <button id="btn-completar" class="btn-success" style="display:none;" onclick="completarViaje(${flete.order_id})">✅ Completar y Cobrar</button>
+                </div>
+            `;
+
+            // Cargar Mapa Leaflet en vivo
+            setTimeout(() => {
+                const lat1 = flete.origin_lat || -16.3533;
+                const lng1 = flete.origin_lng || -71.5831;
+                const lat2 = flete.dest_lat || -16.3683;
+                const lng2 = flete.dest_lng || -71.5458;
+
+                mapInstance = L.map('mapa-activo').setView([lat1, lng1], 12);
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapInstance);
+
+                L.marker([lat1, lng1]).addTo(mapInstance).bindPopup("Origen: " + flete.cantera).openPopup();
+                L.marker([lat2, lng2]).addTo(mapInstance).bindPopup("Destino: " + flete.destino);
+            }, 200);
+        }
+
+        async function iniciarViaje(orderId) {
+            const token = localStorage.getItem("jwt_token");
+            const res = await fetch(`https://volquetes-api.onrender.com/api/orders/${orderId}/iniciar-viaje`, {
+                method: "POST",
+                headers: { "Authorization": `Bearer ${token}` }
+            });
+            if (res.ok) {
+                document.getElementById("btn-iniciar").style.display = "none";
+                document.getElementById("btn-completar").style.display = "block";
+            }
+        }
+
+        async function completarViaje(orderId) {
+            const token = localStorage.getItem("jwt_token");
+            const res = await fetch(`https://volquetes-api.onrender.com/api/orders/${orderId}/completar-viaje`, {
+                method: "POST",
+                headers: { "Authorization": `Bearer ${token}` }
+            });
+            if (res.ok) {
+                alert(`¡Viaje #${orderId} completado! Dinero liberado.`);
+                document.getElementById("flete-activo-container").innerHTML = "";
+                cargarHistorial(); // Actualiza caja de ganancias e historial
+            }
+        }
+
+        async function iniciarSesion() {
+            const phone = document.getElementById("phone").value.trim();
+            const password = document.getElementById("password").value.trim();
+
+            const formData = new URLSearchParams();
+            formData.append("username", phone);
+            formData.append("password", password);
+
+            try {
+                const response = await fetch("https://volquetes-api.onrender.com/api/auth/login", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                    body: formData
+                });
+
+                const data = await response.json();
+                if (response.ok) {
+                    localStorage.setItem("jwt_token", data.access_token);
+                    cargarPerfil(data.access_token);
+                    cargarHistorial();
+                    conectarWebSocket();
+                } else {
+                    document.getElementById("loginError").innerText = data.detail || "Error al autenticar";
+                }
+            } catch (err) {
+                document.getElementById("loginError").innerText = "Error de conexión";
+            }
+        }
+
+        async function cargarPerfil(token) {
+            try {
+                const res = await fetch("https://volquetes-api.onrender.com/api/conductores/mi-perfil", {
+                    headers: { "Authorization": `Bearer ${token}` }
+                });
+                if (res.ok) {
+                    const perfil = await res.json();
+                    document.getElementById("driverName").innerText = perfil.full_name || "Conductor";
+                    document.getElementById("loginForm").style.display = "none";
+                    document.getElementById("radarSection").style.display = "block";
+                }
+            } catch (e) {
+                console.error("Error cargando perfil", e);
+            }
+        }
+
+        async function cargarHistorial() {
+            const token = localStorage.getItem("jwt_token");
+            if (!token) return;
+
+            try {
+                const res = await fetch("https://volquetes-api.onrender.com/api/historial-conductores", {
+                    headers: { "Authorization": `Bearer ${token}` }
+                });
+
+                const tbody = document.getElementById("tabla-historial");
+
+                if (res.ok) {
+                    const data = await res.json();
+                    const ganancias = Number(data.total_ganancias || 0);
+                    document.getElementById("total-ganancias").innerText = `S/ ${ganancias.toFixed(2)}`;
+                    document.getElementById("total-viajes").innerText = data.total_viajes || 0;
+
+                    if (!data.historial || data.historial.length === 0) {
+                        tbody.innerHTML = '<tr><td colspan="5" style="padding: 15px; text-align: center; color: #666;">No hay viajes completados aún.</td></tr>';
+                        return;
+                    }
+
+                    tbody.innerHTML = data.historial.map(v => `
+                        <tr style="border-bottom: 1px solid #eee;">
+                            <td style="padding: 10px;">#${v.id}</td>
+                            <td style="padding: 10px;">${v.quarry_name}</td>
+                            <td style="padding: 10px;">${v.destination}</td>
+                            <td style="padding: 10px; font-weight: bold; color: #2e7d32;">S/ ${v.price}</td>
+                            <td style="padding: 10px;">${v.created_at}</td>
+                        </tr>
+                    `).join('');
+                }
+            } catch (error) {
+                console.error("Error al cargar historial:", error);
+            }
+        }
+
+        function cerrarSesion() {
+            localStorage.removeItem("jwt_token");
+            window.location.reload();
+        }
+    </script>
 </body>
 </html>

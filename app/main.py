@@ -146,7 +146,7 @@ async def publicar_flete(
     return {"mensaje": "Flete publicado con mapa", "order_id": orden.id}
 
 @app.post("/api/orders/{order_id}/aceptar", tags=["Fletes"])
-def aceptar_flete(order_id: int, db: Session = Depends(get_db), conductor_actual: models.Driver = Depends(obtener_conductor_actual)):
+async def aceptar_flete(order_id: int, db: Session = Depends(get_db), conductor_actual: models.Driver = Depends(obtener_conductor_actual)):
     orden = db.query(models.Order).filter(models.Order.id == order_id).first()
     if not orden:
         raise HTTPException(status_code=404, detail="Flete no encontrado")
@@ -156,6 +156,14 @@ def aceptar_flete(order_id: int, db: Session = Depends(get_db), conductor_actual
     orden.driver_id = conductor_actual.id
     orden.status = "assigned"
     db.commit()
+
+    await manager.broadcast({
+        "evento": "CAMBIO_ESTADO",
+        "order_id": orden.id,
+        "nuevo_estado": "assigned",
+        "conductor_nombre": conductor_actual.full_name,
+        "conductor_placa": conductor_actual.plate
+    })
     return {"mensaje": f"Flete #{order_id} asignado a {conductor_actual.full_name}", "order_id": orden.id}
 
 @app.get("/api/orders/{order_id}", response_model=schemas.OrderResponse, tags=["Fletes"])
