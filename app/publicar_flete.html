@@ -16,7 +16,8 @@
         .badge-transit { background-color: #fff8e1; color: #f57f17; }
         .badge-completed { background-color: #e8f5e9; color: #2e7d32; }
         .flete-card { border: 1px solid #ddd; padding: 15px; border-radius: 6px; margin-top: 10px; }
-        .map-box { height: 250px; width: 100%; border-radius: 6px; margin-top: 10px; border: 1px solid #ccc; }
+        .map-box { height: 280px; width: 100%; border-radius: 6px; margin-top: 10px; border: 2px solid #0288d1; }
+        .gps-log { font-weight: bold; color: #0288d1; margin-top: 5px; font-size: 13px; }
     </style>
 </head>
 <body>
@@ -49,8 +50,8 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
         let ws;
-        let mapaCliente = null;
-        let marcadorCamion = null;
+        const mapas = {};
+        const marcadores = {};
 
         window.onload = () => {
             conectarWebSocket();
@@ -123,15 +124,17 @@
                     <span id="badge-${id}" class="status-badge badge-pending">🔍 Buscando Conductor...</span>
                 </p>
                 <p id="info-driver-${id}" style="margin:5px 0; color:#555; display:none;"></p>
+                <p id="gps-log-${id}" class="gps-log" style="display:none;"></p>
                 <div id="mapa-container-${id}"></div>
             `;
             contenedor.prepend(div);
         }
 
         function actualizarEstadoFlete(data) {
-            const badge = document.getElementById(`badge-${data.order_id}`);
-            const infoDriver = document.getElementById(`info-driver-${data.order_id}`);
-            const mapContainer = document.getElementById(`mapa-container-${data.order_id}`);
+            const orderId = data.order_id;
+            const badge = document.getElementById(`badge-${orderId}`);
+            const infoDriver = document.getElementById(`info-driver-${orderId}`);
+            const mapContainer = document.getElementById(`mapa-container-${orderId}`);
 
             if (!badge) return;
 
@@ -146,14 +149,16 @@
                 badge.className = "status-badge badge-transit";
                 badge.innerText = "🚚 Camión en Ruta (GPS Activo)";
 
-                if (mapContainer && !document.getElementById(`mapa-cantera-${data.order_id}`)) {
+                if (mapContainer && !mapas[orderId]) {
                     const mapDiv = document.createElement("div");
-                    mapDiv.id = `mapa-cantera-${data.order_id}`;
+                    mapDiv.id = `mapa-cantera-${orderId}`;
                     mapDiv.className = "map-box";
                     mapContainer.appendChild(mapDiv);
 
-                    mapaCliente = L.map(`mapa-cantera-${data.order_id}`).setView([-16.3533, -71.5831], 13);
-                    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapaCliente);
+                    mapas[orderId] = L.map(`mapa-cantera-${orderId}`).setView([-16.3533, -71.5831], 14);
+                    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapas[orderId]);
+
+                    setTimeout(() => { mapas[orderId].invalidateSize(); }, 300);
                 }
             } else if (data.nuevo_estado === "completed") {
                 badge.className = "status-badge badge-completed";
@@ -162,16 +167,35 @@
         }
 
         function moverCamionEnMapa(data) {
-            if (!mapaCliente) return;
+            const orderId = data.order_id;
+            const mapa = mapas[orderId];
+            if (!mapa) return;
 
-            const nuevaPos = [data.lat, data.lng];
+            const lat = parseFloat(data.lat);
+            const lng = parseFloat(data.lng);
+            const nuevaPos = [lat, lng];
 
-            if (!marcadorCamion) {
-                marcadorCamion = L.marker(nuevaPos).addTo(mapaCliente).bindPopup("🚚 Volquete en movimiento").openPopup();
-            } else {
-                marcadorCamion.setLatLng(nuevaPos);
+            const logEl = document.getElementById(`gps-log-${orderId}`);
+            if (logEl) {
+                logEl.style.display = "block";
+                logEl.innerText = `📡 GPS Recibido: Lat ${lat.toFixed(4)}, Lng ${lng.toFixed(4)}`;
             }
-            mapaCliente.panTo(nuevaPos);
+
+            if (!marcadores[orderId]) {
+                marcadores[orderId] = L.circleMarker(nuevaPos, {
+                    color: '#b71c1c',
+                    fillColor: '#ff1744',
+                    fillOpacity: 1,
+                    radius: 12
+                }).addTo(mapa);
+
+                marcadores[orderId].bindPopup("<b>🚚 Volquete en tiempo real</b>").openPopup();
+            } else {
+                marcadores[orderId].setLatLng(nuevaPos);
+            }
+
+            mapa.setView(nuevaPos, 15);
+            mapa.invalidateSize();
         }
     </script>
 </body>

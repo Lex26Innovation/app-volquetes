@@ -190,17 +190,33 @@
         }
 
         function empezarRastreoGPS(orderId) {
-            if (gpsInterval) clearInterval(gpsInterval);
+    if (gpsInterval) clearInterval(gpsInterval);
 
-            let simLat = -16.3533;
-            let simLng = -71.5831;
+    let simLat = -16.3533;
+    let simLng = -71.5831;
 
-            gpsInterval = setInterval(() => {
-                simLat -= 0.0003;
-                simLng += 0.0003;
-                enviarCoordenadas(orderId, simLat, simLng);
-            }, 3000);
+    // Crear un texto visual en la pantalla del Conductor
+    const card = document.getElementById("card-activo");
+    let statusGps = document.getElementById("status-gps");
+    if (!statusGps && card) {
+        statusGps = document.createElement("p");
+        statusGps.id = "status-gps";
+        statusGps.style.fontWeight = "bold";
+        statusGps.style.color = "#0288d1";
+        card.appendChild(statusGps);
+    }
+
+    gpsInterval = setInterval(() => {
+        simLat -= 0.0004;
+        simLng += 0.0004;
+        
+        if (statusGps) {
+            statusGps.innerText = `📡 Transmitiendo GPS: ${simLat.toFixed(4)}, ${simLng.toFixed(4)}`;
         }
+
+        enviarCoordenadas(orderId, simLat, simLng);
+    }, 2000);
+}
 
         function enviarCoordenadas(orderId, lat, lng) {
             if (ws && ws.readyState === WebSocket.OPEN) {

@@ -107,7 +107,7 @@ async def aceptar_flete(order_id: int, db: Session = Depends(get_db), conductor_
         "conductor_nombre": conductor_actual.full_name,
         "conductor_placa": conductor_actual.plate
     })
-    return {"mensaje": f"Flete #{order_id} asignado a {conductor_actual.full_name}", "order_id": orden.id}
+    return {"mensaje": f"Flete #{order_id} asignado", "order_id": orden.id}
 
 @app.post("/api/orders/{order_id}/iniciar-viaje", tags=["Fletes"])
 async def iniciar_viaje(order_id: int, db: Session = Depends(get_db), conductor_actual: models.Driver = Depends(auth.obtener_conductor_actual)):
