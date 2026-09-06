@@ -46,7 +46,6 @@
 
             <p id="esperando-msg"><i>Esperando nuevos fletes publicados...</i></p>
 
-            <!-- Resumen de Ganancias e Historial -->
             <div style="margin-top: 20px; display: flex; gap: 15px;">
                 <div style="background: #e8f5e9; padding: 15px; border-radius: 8px; flex: 1; text-align: center;">
                     <h4 style="margin: 0; color: #2e7d32;">Ganancias Totales</h4>
@@ -79,7 +78,7 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
         let ws;
-        let mapInstance = null;
+        let gpsInterval = null;
 
         window.onload = () => {
             const token = localStorage.getItem("jwt_token");
@@ -170,26 +169,10 @@
                     <p style="margin:5px 0;">Ruta: <strong>${flete.cantera}</strong> ➔ <strong>${flete.destino}</strong></p>
                     <p style="margin:5px 0;">Monto: <strong style="color:#2e7d32;">S/ ${flete.precio}</strong></p>
                     
-                    <div id="mapa-activo" class="map-box"></div>
-
-                    <button id="btn-iniciar" class="btn-warning" onclick="iniciarViaje(${flete.order_id})">🚚 Iniciar Viaje (En Ruta)</button>
+                    <button id="btn-iniciar" class="btn-warning" onclick="iniciarViaje(${flete.order_id})">🚚 Iniciar Viaje (Transmitir GPS)</button>
                     <button id="btn-completar" class="btn-success" style="display:none;" onclick="completarViaje(${flete.order_id})">✅ Completar y Cobrar</button>
                 </div>
             `;
-
-            // Cargar Mapa Leaflet en vivo
-            setTimeout(() => {
-                const lat1 = flete.origin_lat || -16.3533;
-                const lng1 = flete.origin_lng || -71.5831;
-                const lat2 = flete.dest_lat || -16.3683;
-                const lng2 = flete.dest_lng || -71.5458;
-
-                mapInstance = L.map('mapa-activo').setView([lat1, lng1], 12);
-                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapInstance);
-
-                L.marker([lat1, lng1]).addTo(mapInstance).bindPopup("Origen: " + flete.cantera).openPopup();
-                L.marker([lat2, lng2]).addTo(mapInstance).bindPopup("Destino: " + flete.destino);
-            }, 200);
         }
 
         async function iniciarViaje(orderId) {
@@ -198,22 +181,49 @@
                 method: "POST",
                 headers: { "Authorization": `Bearer ${token}` }
             });
+
             if (res.ok) {
                 document.getElementById("btn-iniciar").style.display = "none";
                 document.getElementById("btn-completar").style.display = "block";
+                empezarRastreoGPS(orderId);
+            }
+        }
+
+        function empezarRastreoGPS(orderId) {
+            if (gpsInterval) clearInterval(gpsInterval);
+
+            let simLat = -16.3533;
+            let simLng = -71.5831;
+
+            gpsInterval = setInterval(() => {
+                simLat -= 0.0003;
+                simLng += 0.0003;
+                enviarCoordenadas(orderId, simLat, simLng);
+            }, 3000);
+        }
+
+        function enviarCoordenadas(orderId, lat, lng) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    evento: "ACTUALIZAR_UBICACION",
+                    order_id: orderId,
+                    lat: lat,
+                    lng: lng
+                }));
             }
         }
 
         async function completarViaje(orderId) {
+            if (gpsInterval) clearInterval(gpsInterval);
             const token = localStorage.getItem("jwt_token");
             const res = await fetch(`https://volquetes-api.onrender.com/api/orders/${orderId}/completar-viaje`, {
                 method: "POST",
                 headers: { "Authorization": `Bearer ${token}` }
             });
             if (res.ok) {
-                alert(`¡Viaje #${orderId} completado! Dinero liberado.`);
+                alert(`¡Viaje #${orderId} completado!`);
                 document.getElementById("flete-activo-container").innerHTML = "";
-                cargarHistorial(); // Actualiza caja de ganancias e historial
+                cargarHistorial();
             }
         }
 

@@ -3,10 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <title>Publicar Flete - Cantera / Cliente</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         body { font-family: Arial, sans-serif; margin: 20px; background-color: #f4f4f9; }
         .container { max-width: 650px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        input, select, button { width: 100%; padding: 10px; margin: 8px 0; box-sizing: border-box; border-radius: 4px; border: 1px solid #ccc; }
+        input, button { width: 100%; padding: 10px; margin: 8px 0; box-sizing: border-box; border-radius: 4px; border: 1px solid #ccc; }
         button { background-color: #0288d1; color: white; border: none; font-weight: bold; cursor: pointer; }
         button:hover { background-color: #01579b; }
         .status-badge { padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 13px; display: inline-block; }
@@ -15,6 +16,7 @@
         .badge-transit { background-color: #fff8e1; color: #f57f17; }
         .badge-completed { background-color: #e8f5e9; color: #2e7d32; }
         .flete-card { border: 1px solid #ddd; padding: 15px; border-radius: 6px; margin-top: 10px; }
+        .map-box { height: 250px; width: 100%; border-radius: 6px; margin-top: 10px; border: 1px solid #ccc; }
     </style>
 </head>
 <body>
@@ -44,8 +46,11 @@
         </div>
     </div>
 
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
         let ws;
+        let mapaCliente = null;
+        let marcadorCamion = null;
 
         window.onload = () => {
             conectarWebSocket();
@@ -62,10 +67,11 @@
 
             ws.onmessage = (event) => {
                 const data = JSON.parse(event.data);
-                console.log("Evento recibido en Cantera:", data);
 
                 if (data.evento === "CAMBIO_ESTADO") {
                     actualizarEstadoFlete(data);
+                } else if (data.evento === "UBICACION_CONDUCTOR") {
+                    moverCamionEnMapa(data);
                 }
             };
 
@@ -117,6 +123,7 @@
                     <span id="badge-${id}" class="status-badge badge-pending">🔍 Buscando Conductor...</span>
                 </p>
                 <p id="info-driver-${id}" style="margin:5px 0; color:#555; display:none;"></p>
+                <div id="mapa-container-${id}"></div>
             `;
             contenedor.prepend(div);
         }
@@ -124,6 +131,7 @@
         function actualizarEstadoFlete(data) {
             const badge = document.getElementById(`badge-${data.order_id}`);
             const infoDriver = document.getElementById(`info-driver-${data.order_id}`);
+            const mapContainer = document.getElementById(`mapa-container-${data.order_id}`);
 
             if (!badge) return;
 
@@ -136,11 +144,34 @@
                 }
             } else if (data.nuevo_estado === "in_transit") {
                 badge.className = "status-badge badge-transit";
-                badge.innerText = "🚚 Camión en Ruta...";
+                badge.innerText = "🚚 Camión en Ruta (GPS Activo)";
+
+                if (mapContainer && !document.getElementById(`mapa-cantera-${data.order_id}`)) {
+                    const mapDiv = document.createElement("div");
+                    mapDiv.id = `mapa-cantera-${data.order_id}`;
+                    mapDiv.className = "map-box";
+                    mapContainer.appendChild(mapDiv);
+
+                    mapaCliente = L.map(`mapa-cantera-${data.order_id}`).setView([-16.3533, -71.5831], 13);
+                    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapaCliente);
+                }
             } else if (data.nuevo_estado === "completed") {
                 badge.className = "status-badge badge-completed";
                 badge.innerText = "🎉 Flete Entregado y Completado";
             }
+        }
+
+        function moverCamionEnMapa(data) {
+            if (!mapaCliente) return;
+
+            const nuevaPos = [data.lat, data.lng];
+
+            if (!marcadorCamion) {
+                marcadorCamion = L.marker(nuevaPos).addTo(mapaCliente).bindPopup("🚚 Volquete en movimiento").openPopup();
+            } else {
+                marcadorCamion.setLatLng(nuevaPos);
+            }
+            mapaCliente.panTo(nuevaPos);
         }
     </script>
 </body>

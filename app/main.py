@@ -1,18 +1,16 @@
-from typing import List
-import jwt
-from fastapi import FastAPI, Depends, HTTPException, status, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Depends, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.security import OAuth2PasswordRequestForm, OAuth2PasswordBearer
 from sqlalchemy.orm import Session
+from typing import List
+import json
 
-from .database import engine, get_db
-from . import models, schemas, auth
+from app import models, schemas, auth
+from app.database import engine, get_db
 
 models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="API Volquetes MVP")
 
-# Permitir peticiones desde el navegador (CORS)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -20,8 +18,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# --- GESTOR DE WEBSOCKETS (ALERTAS EN TIEMPO REAL) ---
 
 class ConnectionManager:
     def __init__(self):
@@ -37,128 +33,63 @@ class ConnectionManager:
 
     async def broadcast(self, message: dict):
         for connection in self.active_connections:
-            await connection.send_json(message)
+            try:
+                await connection.send_json(message)
+            except Exception:
+                pass
 
 manager = ConnectionManager()
 
-@app.websocket("/ws/fletes")
-async def websocket_endpoint(websocket: WebSocket):
-    await manager.connect(websocket)
-    try:
-        while True:
-            # Escucha mensajes enviados por clientes o conductores
-            data = await websocket.receive_text()
-            import json
-            mensaje = json.loads(data)
+app.include_router(auth.router, prefix="/api/auth", tags=["Autenticación"])
 
-            # Si el conductor envía su posición GPS, la retransmitimos en vivo
-            if mensaje.get("evento") == "ACTUALIZAR_UBICACION":
-                await manager.broadcast({
-                    "evento": "UBICACION_CONDUCTOR",
-                    "order_id": mensaje.get("order_id"),
-                    "lat": mensaje.get("lat"),
-                    "lng": mensaje.get("lng")
-                })
-    except WebSocketDisconnect:
-        manager.disconnect(websocket)
+@app.get("/")
+def read_root():
+    return {"mensaje": "API Volquetes Activa"}
 
-# --- SEGURIDAD Y AUTENTICACIÓN ---
-
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
-
-def obtener_conductor_actual(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
-    excepcion_credenciales = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Credenciales inválidas o token expirado",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
-    try:
-        payload = jwt.decode(token, auth.SECRET_KEY, algorithms=[auth.ALGORITHM])
-        telefono: str = payload.get("sub")
-        if telefono is None:
-            raise excepcion_credenciales
-    except Exception:
-        raise excepcion_credenciales
-    
-    conductor = db.query(models.Driver).filter(models.Driver.contact_phone == telefono).first()
-    if conductor is None:
-        raise excepcion_credenciales
-    return conductor
-
-@app.post("/api/auth/registrar", tags=["Seguridad"])
-def registrar_conductor(driver: schemas.DriverCreate, db: Session = Depends(get_db)):
-    db_user = db.query(models.Driver).filter(models.Driver.contact_phone == driver.contact_phone).first()
-    if db_user:
-        raise HTTPException(status_code=400, detail="Este número de teléfono ya está registrado")
-    
-    nuevo_conductor = models.Driver(
-        full_name=driver.full_name,
-        contact_phone=driver.contact_phone,
-        plate=driver.plate,
-        capacity_m3=driver.capacity_m3,
-        hashed_password=auth.obtener_password_hash(driver.password)
-    )
-    db.add(nuevo_conductor)
-    db.commit()
-    db.refresh(nuevo_conductor)
-    return {"mensaje": "Conductor registrado exitosamente", "driver_id": nuevo_conductor.id}
-
-@app.post("/api/auth/login", tags=["Seguridad"])
-def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
-    conductor = db.query(models.Driver).filter(models.Driver.contact_phone == form_data.username).first()
-    if not conductor or not auth.verificar_password(form_data.password, conductor.hashed_password):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Teléfono o contraseña incorrectos")
-    
-    token = auth.crear_token_acceso(data={"sub": conductor.contact_phone})
-    return {"access_token": token, "token_type": "bearer"}
-
-@app.get("/api/conductores/mi-perfil", response_model=schemas.DriverResponse, tags=["Conductores"])
-def ver_mi_perfil(conductor_actual: models.Driver = Depends(obtener_conductor_actual)):
+@app.get("/api/conductores/mi-perfil", tags=["Conductores"])
+def mi_perfil(conductor_actual: models.Driver = Depends(auth.obtener_conductor_actual)):
     return conductor_actual
 
-# --- FLETES Y OPERACIONES ---
+@app.get("/api/historial-conductores", tags=["Conductores"])
+def historial_conductor(db: Session = Depends(get_db), conductor_actual: models.Driver = Depends(auth.obtener_conductor_actual)):
+    ordenes = db.query(models.Order).filter(models.Order.driver_id == conductor_actual.id, models.Order.status == "completed").all()
+    total_ganancias = sum([o.price for o in ordenes])
+    historial = [{
+        "id": o.id,
+        "quarry_name": o.quarry_name,
+        "destination": o.delivery_address,
+        "price": o.price,
+        "created_at": o.created_at.strftime("%Y-%m-%d %H:%M") if o.created_at else "N/A"
+    } for o in ordenes]
+    return {
+        "total_ganancias": total_ganancias,
+        "total_viajes": len(ordenes),
+        "historial": historial
+    }
 
 @app.post("/api/orders/publicar", tags=["Fletes"])
-async def publicar_flete(
-    quarry_name: str,
-    delivery_address: str,
-    total_price: float,
-    origin_lat: float = -16.3533,
-    origin_lng: float = -71.5831,
-    dest_lat: float = -16.3683,
-    dest_lng: float = -71.5458,
-    db: Session = Depends(get_db)
-):
-    orden = models.Order(
+async def publicar_flete(quarry_name: str, delivery_address: str, total_price: float, db: Session = Depends(get_db)):
+    nueva_orden = models.Order(
         quarry_name=quarry_name,
         delivery_address=delivery_address,
-        total_price=total_price,
-        origin_lat=origin_lat,
-        origin_lng=origin_lng,
-        dest_lat=dest_lat,
-        dest_lng=dest_lng,
-        status="pending_payment"
+        price=total_price,
+        status="pending"
     )
-    db.add(orden)
+    db.add(nueva_orden)
     db.commit()
-    db.refresh(orden)
-    
+    db.refresh(nueva_orden)
+
     await manager.broadcast({
         "evento": "NUEVO_FLETE",
-        "order_id": orden.id,
-        "cantera": orden.quarry_name,
-        "destino": orden.delivery_address,
-        "precio": orden.total_price,
-        "origin_lat": orden.origin_lat,
-        "origin_lng": orden.origin_lng,
-        "dest_lat": orden.dest_lat,
-        "dest_lng": orden.dest_lng
+        "order_id": nueva_orden.id,
+        "cantera": nueva_orden.quarry_name,
+        "destino": nueva_orden.delivery_address,
+        "precio": nueva_orden.price
     })
-    
-    return {"mensaje": "Flete publicado con mapa", "order_id": orden.id}
+    return {"mensaje": "Flete publicado con éxito", "order_id": nueva_orden.id}
 
 @app.post("/api/orders/{order_id}/aceptar", tags=["Fletes"])
-async def aceptar_flete(order_id: int, db: Session = Depends(get_db), conductor_actual: models.Driver = Depends(obtener_conductor_actual)):
+async def aceptar_flete(order_id: int, db: Session = Depends(get_db), conductor_actual: models.Driver = Depends(auth.obtener_conductor_actual)):
     orden = db.query(models.Order).filter(models.Order.id == order_id).first()
     if not orden:
         raise HTTPException(status_code=404, detail="Flete no encontrado")
@@ -178,60 +109,11 @@ async def aceptar_flete(order_id: int, db: Session = Depends(get_db), conductor_
     })
     return {"mensaje": f"Flete #{order_id} asignado a {conductor_actual.full_name}", "order_id": orden.id}
 
-@app.get("/api/orders/{order_id}", response_model=schemas.OrderResponse, tags=["Fletes"])
-def ver_detalle_flete(order_id: int, db: Session = Depends(get_db)):
-    orden = db.query(models.Order).filter(models.Order.id == order_id).first()
-    if not orden:
-        raise HTTPException(status_code=404, detail="Flete no encontrado")
-
-    driver_data = None
-    if orden.driver:
-        if orden.status in ["escrow_paid", "in_transit", "completed"]:
-            nombre_mostrar = orden.driver.full_name
-            telefono_mostrar = orden.driver.contact_phone
-        else:
-            nombre_mostrar = "*** PROTEGIDO ***"
-            telefono_mostrar = "*** PROTEGIDO ***"
-
-        driver_data = schemas.DriverResponse(
-            id=orden.driver.id,
-            plate=orden.driver.plate,
-            capacity_m3=orden.driver.capacity_m3,
-            full_name=nombre_mostrar,
-            contact_phone=telefono_mostrar
-        )
-
-    return schemas.OrderResponse(
-        id=orden.id,
-        quarry_name=orden.quarry_name,
-        delivery_address=orden.delivery_address,
-        total_price=orden.total_price,
-        status=orden.status,
-        driver=driver_data
-    )
-
-@app.post("/api/orders/{order_id}/pagar-garantia", tags=["Fletes"])
-def simular_pago_garantia(order_id: int, db: Session = Depends(get_db)):
-    orden = db.query(models.Order).filter(models.Order.id == order_id).first()
-    if not orden:
-        raise HTTPException(status_code=404, detail="Flete no encontrado")
-    
-    orden.status = "escrow_paid"
-    db.commit()
-    return {"mensaje": "Pago en garantía exitoso. Datos del conductor liberados."}
-
 @app.post("/api/orders/{order_id}/iniciar-viaje", tags=["Fletes"])
-async def iniciar_viaje(
-    order_id: int, 
-    db: Session = Depends(get_db), 
-    conductor_actual: models.Driver = Depends(obtener_conductor_actual)
-):
-    orden = db.query(models.Order).filter(models.Order.id == order_id).first()
+async def iniciar_viaje(order_id: int, db: Session = Depends(get_db), conductor_actual: models.Driver = Depends(auth.obtener_conductor_actual)):
+    orden = db.query(models.Order).filter(models.Order.id == order_id, models.Order.driver_id == conductor_actual.id).first()
     if not orden:
-        raise HTTPException(status_code=404, detail="Flete no encontrado")
-    if orden.driver_id != conductor_actual.id:
-        raise HTTPException(status_code=403, detail="No estás asignado a este flete")
-    
+        raise HTTPException(status_code=404, detail="Orden no encontrada")
     orden.status = "in_transit"
     db.commit()
 
@@ -240,66 +122,13 @@ async def iniciar_viaje(
         "order_id": orden.id,
         "nuevo_estado": "in_transit"
     })
-    return {"mensaje": f"Flete #{order_id} en ruta", "estado": orden.status}
-
-@app.get("/api/historial-conductores", tags=["Conductores"])
-def obtener_historial_conductor(
-    db: Session = Depends(get_db),
-    conductor_actual: models.Driver = Depends(obtener_conductor_actual)
-):
-    try:
-        viajes = db.query(models.Order).filter(
-            models.Order.driver_id == conductor_actual.id,
-            models.Order.status.in_(["completado", "completed"])
-        ).all()
-
-        historial_lista = []
-        total_ganancias = 0.0
-
-        for v in viajes:
-            precio = float(getattr(v, "total_price", 0) or getattr(v, "price", 0) or 0)
-            destino = getattr(v, "delivery_address", None) or getattr(v, "destination", None) or "Sin destino"
-            cantera = getattr(v, "quarry_name", None) or "Cantera"
-            
-            fecha_obj = getattr(v, "created_at", None)
-            if hasattr(fecha_obj, "strftime"):
-                fecha_str = fecha_obj.strftime("%Y-%m-%d %H:%M")
-            elif fecha_obj:
-                fecha_str = str(fecha_obj)
-            else:
-                fecha_str = "N/A"
-
-            total_ganancias += precio
-
-            historial_lista.append({
-                "id": v.id,
-                "quarry_name": cantera,
-                "destination": destino,
-                "price": precio,
-                "created_at": fecha_str
-            })
-
-        return {
-            "total_ganancias": total_ganancias,
-            "total_viajes": len(historial_lista),
-            "historial": historial_lista
-        }
-    except Exception as e:
-        print(f"Error procesando historial: {e}")
-        return {"total_ganancias": 0, "total_viajes": 0, "historial": []}
+    return {"mensaje": "Viaje iniciado"}
 
 @app.post("/api/orders/{order_id}/completar-viaje", tags=["Fletes"])
-async def completar_viaje(
-    order_id: int, 
-    db: Session = Depends(get_db), 
-    conductor_actual: models.Driver = Depends(obtener_conductor_actual)
-):
-    orden = db.query(models.Order).filter(models.Order.id == order_id).first()
+async def completar_viaje(order_id: int, db: Session = Depends(get_db), conductor_actual: models.Driver = Depends(auth.obtener_conductor_actual)):
+    orden = db.query(models.Order).filter(models.Order.id == order_id, models.Order.driver_id == conductor_actual.id).first()
     if not orden:
-        raise HTTPException(status_code=404, detail="Flete no encontrado")
-    if orden.driver_id != conductor_actual.id:
-        raise HTTPException(status_code=403, detail="No estás asignado a este flete")
-    
+        raise HTTPException(status_code=404, detail="Orden no encontrada")
     orden.status = "completed"
     db.commit()
 
@@ -308,4 +137,21 @@ async def completar_viaje(
         "order_id": orden.id,
         "nuevo_estado": "completed"
     })
-    return {"mensaje": f"Flete #{order_id} completado con éxito", "estado": orden.status}
+    return {"mensaje": "Viaje completado"}
+
+@app.websocket("/ws/fletes")
+async def websocket_endpoint(websocket: WebSocket):
+    await manager.connect(websocket)
+    try:
+        while True:
+            data = await websocket.receive_text()
+            mensaje = json.loads(data)
+            if mensaje.get("evento") == "ACTUALIZAR_UBICACION":
+                await manager.broadcast({
+                    "evento": "UBICACION_CONDUCTOR",
+                    "order_id": mensaje.get("order_id"),
+                    "lat": mensaje.get("lat"),
+                    "lng": mensaje.get("lng")
+                })
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
