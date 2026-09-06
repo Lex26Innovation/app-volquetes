@@ -26,13 +26,13 @@
         
         <form id="form-flete">
             <label>Cantera / Origen:</label>
-            <input type="text" id="quarry_name" value="Cantera Añashuayco" required>
+            <input type="text" id="quarry_name" value="Cantera Añashuayco">
 
             <label>Dirección Destino / Obra:</label>
-            <input type="text" id="delivery_address" value="Obra Yanahuara" required>
+            <input type="text" id="delivery_address" value="Obra Yanahuara">
 
             <label>Precio del Flete (S/):</label>
-            <input type="number" id="total_price" value="300" required>
+            <input type="number" id="total_price" value="350">
 
             <button type="button" onclick="publicarFlete()">🚀 Publicar Flete en Vivo</button>
         </form>
@@ -68,7 +68,7 @@
 
             ws.onmessage = (event) => {
                 const data = JSON.parse(event.data);
-
+                
                 if (data.evento === "CAMBIO_ESTADO") {
                     actualizarEstadoFlete(data);
                 } else if (data.evento === "UBICACION_CONDUCTOR") {
@@ -76,16 +76,8 @@
                 }
             };
 
-            ws.onerror = () => {
-                wsStatus.innerText = "Error";
-                wsStatus.style.color = "#d32f2f";
-            };
-
-            ws.onclose = () => {
-                wsStatus.innerText = "Reconectando...";
-                wsStatus.style.color = "#ed6c02";
-                setTimeout(conectarWebSocket, 3000);
-            };
+            ws.onerror = () => { wsStatus.innerText = "Error"; wsStatus.style.color = "#d32f2f"; };
+            ws.onclose = () => { setTimeout(conectarWebSocket, 3000); };
         }
 
         async function publicarFlete() {
@@ -93,20 +85,11 @@
             const address = document.getElementById("delivery_address").value;
             const price = document.getElementById("total_price").value;
 
-            const url = `https://volquetes-api.onrender.com/api/orders/publicar?quarry_name=${encodeURIComponent(quarry)}&delivery_address=${encodeURIComponent(address)}&total_price=${price}`;
-
-            try {
-                const res = await fetch(url, { method: "POST" });
-                const data = await res.json();
-                
-                if (res.ok) {
-                    alert(`Flete #${data.order_id} publicado con éxito`);
-                    agregarFleteALista(data.order_id, quarry, address, price);
-                } else {
-                    alert("Error al publicar el flete");
-                }
-            } catch (e) {
-                alert("Error de red al publicar");
+            const res = await fetch(`https://volquetes-api.onrender.com/api/orders/publicar?quarry_name=${encodeURIComponent(quarry)}&delivery_address=${encodeURIComponent(address)}&total_price=${price}`, { method: "POST" });
+            const data = await res.json();
+            
+            if (res.ok) {
+                agregarFleteALista(data.order_id, quarry, address, price);
             }
         }
 
@@ -123,43 +106,31 @@
                 <p style="margin:5px 0;"><strong>Estado:</strong> 
                     <span id="badge-${id}" class="status-badge badge-pending">🔍 Buscando Conductor...</span>
                 </p>
-                <p id="info-driver-${id}" style="margin:5px 0; color:#555; display:none;"></p>
-                <p id="gps-log-${id}" class="gps-log" style="display:none;"></p>
-                <div id="mapa-container-${id}"></div>
+                <p id="gps-log-${id}" class="gps-log">📡 Esperando inicio de viaje del conductor...</p>
+                <div id="mapa-cantera-${id}" class="map-box"></div>
             `;
             contenedor.prepend(div);
+
+            // Carga el mapa de inmediato al crear la tarjeta
+            setTimeout(() => {
+                mapas[id] = L.map(`mapa-cantera-${id}`).setView([-16.3673, -71.5691], 15);
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapas[id]);
+                mapas[id].invalidateSize();
+            }, 200);
         }
 
         function actualizarEstadoFlete(data) {
-            const orderId = data.order_id;
-            const badge = document.getElementById(`badge-${orderId}`);
-            const infoDriver = document.getElementById(`info-driver-${orderId}`);
-            const mapContainer = document.getElementById(`mapa-container-${orderId}`);
+            const id = data.order_id;
+            const badge = document.getElementById(`badge-${id}`);
 
             if (!badge) return;
 
             if (data.nuevo_estado === "assigned") {
                 badge.className = "status-badge badge-assigned";
                 badge.innerText = "✅ Aceptado por Conductor";
-                if (infoDriver && data.conductor_nombre) {
-                    infoDriver.style.display = "block";
-                    infoDriver.innerText = `Conductor: ${data.conductor_nombre} (Placa: ${data.conductor_placa || 'N/A'})`;
-                }
             } else if (data.nuevo_estado === "in_transit") {
                 badge.className = "status-badge badge-transit";
                 badge.innerText = "🚚 Camión en Ruta (GPS Activo)";
-
-                if (mapContainer && !mapas[orderId]) {
-                    const mapDiv = document.createElement("div");
-                    mapDiv.id = `mapa-cantera-${orderId}`;
-                    mapDiv.className = "map-box";
-                    mapContainer.appendChild(mapDiv);
-
-                    mapas[orderId] = L.map(`mapa-cantera-${orderId}`).setView([-16.3533, -71.5831], 14);
-                    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapas[orderId]);
-
-                    setTimeout(() => { mapas[orderId].invalidateSize(); }, 300);
-                }
             } else if (data.nuevo_estado === "completed") {
                 badge.className = "status-badge badge-completed";
                 badge.innerText = "🎉 Flete Entregado y Completado";
@@ -167,35 +138,31 @@
         }
 
         function moverCamionEnMapa(data) {
-            const orderId = data.order_id;
-            const mapa = mapas[orderId];
-            if (!mapa) return;
-
+            const id = parseInt(data.order_id);
             const lat = parseFloat(data.lat);
             const lng = parseFloat(data.lng);
             const nuevaPos = [lat, lng];
 
-            const logEl = document.getElementById(`gps-log-${orderId}`);
+            const logEl = document.getElementById(`gps-log-${id}`);
             if (logEl) {
-                logEl.style.display = "block";
                 logEl.innerText = `📡 GPS Recibido: Lat ${lat.toFixed(4)}, Lng ${lng.toFixed(4)}`;
             }
 
-            if (!marcadores[orderId]) {
-                marcadores[orderId] = L.circleMarker(nuevaPos, {
+            if (!mapas[id]) return;
+
+            if (!marcadores[id]) {
+                marcadores[id] = L.circleMarker(nuevaPos, {
                     color: '#b71c1c',
                     fillColor: '#ff1744',
                     fillOpacity: 1,
                     radius: 12
-                }).addTo(mapa);
-
-                marcadores[orderId].bindPopup("<b>🚚 Volquete en tiempo real</b>").openPopup();
+                }).addTo(mapas[id]);
+                marcadores[id].bindPopup("<b>🚚 Volquete en movimiento</b>").openPopup();
             } else {
-                marcadores[orderId].setLatLng(nuevaPos);
+                marcadores[id].setLatLng(nuevaPos);
             }
 
-            mapa.setView(nuevaPos, 15);
-            mapa.invalidateSize();
+            mapas[id].setView(nuevaPos, 15);
         }
     </script>
 </body>

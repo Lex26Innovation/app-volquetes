@@ -46,27 +46,6 @@ app.include_router(auth.router, prefix="/api/auth", tags=["Autenticación"])
 def read_root():
     return {"mensaje": "API Volquetes Activa"}
 
-@app.get("/api/conductores/mi-perfil", tags=["Conductores"])
-def mi_perfil(conductor_actual: models.Driver = Depends(auth.obtener_conductor_actual)):
-    return conductor_actual
-
-@app.get("/api/historial-conductores", tags=["Conductores"])
-def historial_conductor(db: Session = Depends(get_db), conductor_actual: models.Driver = Depends(auth.obtener_conductor_actual)):
-    ordenes = db.query(models.Order).filter(models.Order.driver_id == conductor_actual.id, models.Order.status == "completed").all()
-    total_ganancias = sum([o.price for o in ordenes])
-    historial = [{
-        "id": o.id,
-        "quarry_name": o.quarry_name,
-        "destination": o.delivery_address,
-        "price": o.price,
-        "created_at": o.created_at.strftime("%Y-%m-%d %H:%M") if o.created_at else "N/A"
-    } for o in ordenes]
-    return {
-        "total_ganancias": total_ganancias,
-        "total_viajes": len(ordenes),
-        "historial": historial
-    }
-
 @app.post("/api/orders/publicar", tags=["Fletes"])
 async def publicar_flete(quarry_name: str, delivery_address: str, total_price: float, db: Session = Depends(get_db)):
     nueva_orden = models.Order(
@@ -89,52 +68,43 @@ async def publicar_flete(quarry_name: str, delivery_address: str, total_price: f
     return {"mensaje": "Flete publicado con éxito", "order_id": nueva_orden.id}
 
 @app.post("/api/orders/{order_id}/aceptar", tags=["Fletes"])
-async def aceptar_flete(order_id: int, db: Session = Depends(get_db), conductor_actual: models.Driver = Depends(auth.obtener_conductor_actual)):
+async def aceptar_flete(order_id: int, db: Session = Depends(get_db)):
     orden = db.query(models.Order).filter(models.Order.id == order_id).first()
-    if not orden:
-        raise HTTPException(status_code=404, detail="Flete no encontrado")
-    if orden.driver_id is not None:
-        raise HTTPException(status_code=400, detail="Este flete ya fue asignado")
-    
-    orden.driver_id = conductor_actual.id
-    orden.status = "assigned"
-    db.commit()
+    if orden:
+        orden.status = "assigned"
+        db.commit()
 
     await manager.broadcast({
         "evento": "CAMBIO_ESTADO",
-        "order_id": orden.id,
-        "nuevo_estado": "assigned",
-        "conductor_nombre": conductor_actual.full_name,
-        "conductor_placa": conductor_actual.plate
+        "order_id": order_id,
+        "nuevo_estado": "assigned"
     })
-    return {"mensaje": f"Flete #{order_id} asignado", "order_id": orden.id}
+    return {"mensaje": f"Flete #{order_id} asignado", "order_id": order_id}
 
 @app.post("/api/orders/{order_id}/iniciar-viaje", tags=["Fletes"])
-async def iniciar_viaje(order_id: int, db: Session = Depends(get_db), conductor_actual: models.Driver = Depends(auth.obtener_conductor_actual)):
-    orden = db.query(models.Order).filter(models.Order.id == order_id, models.Order.driver_id == conductor_actual.id).first()
-    if not orden:
-        raise HTTPException(status_code=404, detail="Orden no encontrada")
-    orden.status = "in_transit"
-    db.commit()
+async def iniciar_viaje(order_id: int, db: Session = Depends(get_db)):
+    orden = db.query(models.Order).filter(models.Order.id == order_id).first()
+    if orden:
+        orden.status = "in_transit"
+        db.commit()
 
     await manager.broadcast({
         "evento": "CAMBIO_ESTADO",
-        "order_id": orden.id,
+        "order_id": order_id,
         "nuevo_estado": "in_transit"
     })
     return {"mensaje": "Viaje iniciado"}
 
 @app.post("/api/orders/{order_id}/completar-viaje", tags=["Fletes"])
-async def completar_viaje(order_id: int, db: Session = Depends(get_db), conductor_actual: models.Driver = Depends(auth.obtener_conductor_actual)):
-    orden = db.query(models.Order).filter(models.Order.id == order_id, models.Order.driver_id == conductor_actual.id).first()
-    if not orden:
-        raise HTTPException(status_code=404, detail="Orden no encontrada")
-    orden.status = "completed"
-    db.commit()
+async def completar_viaje(order_id: int, db: Session = Depends(get_db)):
+    orden = db.query(models.Order).filter(models.Order.id == order_id).first()
+    if orden:
+        orden.status = "completed"
+        db.commit()
 
     await manager.broadcast({
         "evento": "CAMBIO_ESTADO",
-        "order_id": orden.id,
+        "order_id": order_id,
         "nuevo_estado": "completed"
     })
     return {"mensaje": "Viaje completado"}
