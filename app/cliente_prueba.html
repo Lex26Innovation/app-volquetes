@@ -116,30 +116,52 @@
         }
 
         async function aceptarFlete(id, cantera, destino, precio) {
-            currentOrderId = Number(id);
-            
-            const el = document.getElementById(`disponible-${id}`);
-            if (el) el.remove();
+    currentOrderId = Number(id);
+    
+    const el = document.getElementById(`disponible-${id}`);
+    if (el) el.remove();
 
-            // Notificación vía API HTTP
-            await fetch(`https://volquetes-api.onrender.com/api/orders/${id}/aceptar`, { method: "POST" }).catch(() => {});
+    // Notificación API REST
+    fetch(`https://volquetes-api.onrender.com/api/orders/${id}/aceptar`, { method: "POST" }).catch(() => {});
 
-            // Respaldo inmediato vía WebSocket
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({
-                    evento: "CAMBIO_ESTADO",
-                    order_id: currentOrderId,
-                    nuevo_estado: "assigned"
-                }));
-            }
+    // Notificación directa WebSocket
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+            evento: "CAMBIO_ESTADO",
+            order_id: currentOrderId,
+            nuevo_estado: "assigned"
+        }));
+    }
 
-            document.getElementById("seccion-viaje-activo").style.display = "block";
-            document.getElementById("active-id").innerText = id;
-            document.getElementById("active-ruta").innerText = `${cantera} ➔ ${destino}`;
-            document.getElementById("active-monto").innerText = `S/ ${precio}`;
-            document.getElementById("btn-iniciar").style.display = "block";
-            document.getElementById("btn-completar").style.display = "none";
-        }
+    document.getElementById("seccion-viaje-activo").style.display = "block";
+    document.getElementById("active-id").innerText = id;
+    document.getElementById("active-ruta").innerText = `${cantera} ➔ ${destino}`;
+    document.getElementById("active-monto").innerText = `S/ ${precio}`;
+    document.getElementById("btn-iniciar").style.display = "block";
+    document.getElementById("btn-completar").style.display = "none";
+}
+
+async function iniciarViaje() {
+    if (!currentOrderId) return;
+
+    // Notificación API REST
+    fetch(`https://volquetes-api.onrender.com/api/orders/${currentOrderId}/iniciar-viaje`, { method: "POST" }).catch(() => {});
+
+    // Notificación directa WebSocket
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+            evento: "CAMBIO_ESTADO",
+            order_id: currentOrderId,
+            nuevo_estado: "in_transit"
+        }));
+    }
+
+    document.getElementById("btn-iniciar").style.display = "none";
+    document.getElementById("btn-completar").style.display = "block";
+    document.getElementById("status-gps").style.display = "block";
+
+    iniciarTransmisionGPS();
+}
 
         async function iniciarViaje() {
             if (!currentOrderId) return;

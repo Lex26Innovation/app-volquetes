@@ -56,27 +56,41 @@
         window.onload = () => { conectarWebSocket(); };
 
         function conectarWebSocket() {
-            const wsStatus = document.getElementById("ws-status");
-            ws = new WebSocket("wss://volquetes-api.onrender.com/ws/fletes");
+    const wsStatus = document.getElementById("ws-status");
+    ws = new WebSocket("wss://volquetes-api.onrender.com/ws/fletes");
 
-            ws.onopen = () => {
-                wsStatus.innerText = "Conectado";
-                wsStatus.style.color = "#2e7d32";
-            };
+    ws.onopen = () => {
+        wsStatus.innerText = "Conectado";
+        wsStatus.style.color = "#2e7d32";
+    };
 
-            ws.onmessage = (event) => {
-                const data = JSON.parse(event.data);
-                
-                if (data.evento === "CAMBIO_ESTADO") {
-                    actualizarEstadoFlete(data);
-                } else if (data.evento === "UBICACION_CONDUCTOR") {
-                    moverCamionEnMapa(data);
-                }
-            };
-
-            ws.onerror = () => { wsStatus.innerText = "Error"; wsStatus.style.color = "#d32f2f"; };
-            ws.onclose = () => { setTimeout(conectarWebSocket, 3000); };
+    ws.onmessage = (event) => {
+        try {
+            const data = JSON.parse(event.data);
+            console.log("Mensaje WS Recibido:", data);
+            
+            if (data.evento === "CAMBIO_ESTADO") {
+                actualizarEstadoFlete(data);
+            } else if (data.evento === "UBICACION_CONDUCTOR") {
+                moverCamionEnMapa(data);
+            }
+        } catch (e) {
+            console.error("Error al procesar mensaje WS:", e);
         }
+    };
+
+    ws.onerror = (err) => { 
+        console.error("Error WS:", err);
+        wsStatus.innerText = "Error"; 
+        wsStatus.style.color = "#d32f2f"; 
+    };
+    
+    ws.onclose = () => { 
+        wsStatus.innerText = "Reconectando...";
+        wsStatus.style.color = "orange";
+        setTimeout(conectarWebSocket, 2000); 
+    };
+}
 
         async function publicarFlete() {
             const quarry = document.getElementById("quarry_name").value;
