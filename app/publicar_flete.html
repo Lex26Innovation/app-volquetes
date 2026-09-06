@@ -53,9 +53,7 @@
         const mapas = {};
         const marcadores = {};
 
-        window.onload = () => {
-            conectarWebSocket();
-        };
+        window.onload = () => { conectarWebSocket(); };
 
         function conectarWebSocket() {
             const wsStatus = document.getElementById("ws-status");
@@ -97,29 +95,30 @@
             const contenedor = document.getElementById("lista-fletes");
             if (contenedor.querySelector("i")) contenedor.innerHTML = "";
 
+            const idNum = Number(id);
             const div = document.createElement("div");
             div.className = "flete-card";
-            div.id = `flete-cantera-${id}`;
+            div.id = `flete-cantera-${idNum}`;
             div.innerHTML = `
-                <h4 style="margin:0;">Flete #${id} - S/ ${price}</h4>
+                <h4 style="margin:0;">Flete #${idNum} - S/ ${price}</h4>
                 <p style="margin:5px 0;"><strong>Ruta:</strong> ${quarry} ➔ ${address}</p>
                 <p style="margin:5px 0;"><strong>Estado:</strong> 
-                    <span id="badge-${id}" class="status-badge badge-pending">🔍 Buscando Conductor...</span>
+                    <span id="badge-${idNum}" class="status-badge badge-pending">🔍 Buscando Conductor...</span>
                 </p>
-                <p id="gps-log-${id}" class="gps-log">📡 Esperando señal GPS...</p>
-                <div id="mapa-cantera-${id}" class="map-box"></div>
+                <p id="gps-log-${idNum}" class="gps-log">📡 Esperando acción del conductor...</p>
+                <div id="mapa-cantera-${idNum}" class="map-box"></div>
             `;
             contenedor.prepend(div);
 
             setTimeout(() => {
-                mapas[id] = L.map(`mapa-cantera-${id}`).setView([-16.3673, -71.5691], 15);
-                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapas[id]);
-                mapas[id].invalidateSize();
+                mapas[idNum] = L.map(`mapa-cantera-${idNum}`).setView([-16.3673, -71.5691], 15);
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapas[idNum]);
+                mapas[idNum].invalidateSize();
             }, 200);
         }
 
         function actualizarEstadoFlete(data) {
-            const id = parseInt(data.order_id);
+            const id = Number(data.order_id);
             const badge = document.getElementById(`badge-${id}`);
             if (!badge) return;
 
@@ -136,14 +135,14 @@
         }
 
         function moverCamionEnMapa(data) {
-            const id = parseInt(data.order_id);
-            const lat = parseFloat(data.lat);
-            const lng = parseFloat(data.lng);
+            const id = Number(data.order_id);
+            const lat = Number(data.lat);
+            const lng = Number(data.lng);
             const nuevaPos = [lat, lng];
 
-            // Forzar actualización visual si está recibiendo coordenadas
+            // Auto-recuperación si venía de un estado sin actualizar
             const badge = document.getElementById(`badge-${id}`);
-            if (badge && badge.innerText.includes("Buscando")) {
+            if (badge && !badge.innerText.includes("Ruta")) {
                 badge.className = "status-badge badge-transit";
                 badge.innerText = "🚚 Camión en Ruta (GPS Activo)";
             }

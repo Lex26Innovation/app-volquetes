@@ -120,17 +120,25 @@ async def websocket_endpoint(websocket: WebSocket):
     try:
         while True:
             data = await websocket.receive_text()
-            mensaje = json.loads(data)
-            
-            if mensaje.get("evento") == "ACTUALIZAR_UBICACION":
+            try:
+                mensaje = json.loads(data)
+            except Exception:
+                continue  # Si el mensaje no es JSON válido, ignora y NO desconecta al usuario
+
+            evento = mensaje.get("evento")
+            if evento == "ACTUALIZAR_UBICACION":
                 await manager.broadcast({
                     "evento": "UBICACION_CONDUCTOR",
                     "order_id": mensaje.get("order_id"),
                     "lat": mensaje.get("lat"),
                     "lng": mensaje.get("lng")
                 })
-            elif mensaje.get("evento") == "CAMBIO_ESTADO":
-                await manager.broadcast(mensaje)
+            elif evento == "CAMBIO_ESTADO":
+                await manager.broadcast({
+                    "evento": "CAMBIO_ESTADO",
+                    "order_id": mensaje.get("order_id"),
+                    "nuevo_estado": mensaje.get("nuevo_estado")
+                })
     except WebSocketDisconnect:
         manager.disconnect(websocket)
     except Exception:

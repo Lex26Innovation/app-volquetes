@@ -29,13 +29,11 @@
         <p>Conductor: <strong>Alex Genaro Ttito Torres</strong></p>
         <p>Estado del Radar: <span id="ws-status" style="font-weight:bold; color:orange;">Conectando...</span></p>
 
-        <!-- Fletes Disponibles para Aceptar -->
         <h3>📢 Fletes Disponibles en Vivo</h3>
         <div id="lista-disponibles">
             <p style="color:#777;"><i>Esperando que una cantera publique un flete...</i></p>
         </div>
 
-        <!-- Viaje en Curso -->
         <div id="seccion-viaje-activo" style="display:none;" class="card-flete">
             <h3 style="margin-top:0; color:#0288d1;">📍 Viaje en Curso #<span id="active-id"></span></h3>
             <p><strong>Ruta:</strong> <span id="active-ruta"></span></p>
@@ -47,7 +45,6 @@
             <p id="status-gps" style="font-weight:bold; color:#0288d1; margin-top:10px; display:none;">📡 Conectando GPS...</p>
         </div>
 
-        <!-- Estadísticas -->
         <div class="stats-grid">
             <div class="stat-card">
                 <span style="color:#555;">Ganancias Totales</span>
@@ -59,7 +56,6 @@
             </div>
         </div>
 
-        <!-- Historial -->
         <h3>Historial de Fletes</h3>
         <table>
             <thead>
@@ -72,7 +68,6 @@
             </thead>
             <tbody>
                 <tr><td>#2</td><td>Cantera Añashuayco</td><td>Obra Miraflores</td><td style="color:green; font-weight:bold;">S/ 200</td></tr>
-                <tr><td>#3</td><td>Cantera Añashuayco</td><td>Obra Yanahuara</td><td style="color:green; font-weight:bold;">S/ 300</td></tr>
             </tbody>
         </table>
     </div>
@@ -82,9 +77,7 @@
         let gpsInterval;
         let currentOrderId = null;
 
-        window.onload = () => {
-            conectarWebSocket();
-        };
+        window.onload = () => { conectarWebSocket(); };
 
         function conectarWebSocket() {
             const wsStatus = document.getElementById("ws-status");
@@ -97,8 +90,6 @@
 
             ws.onmessage = (event) => {
                 const data = JSON.parse(event.data);
-                
-                // Recibe alerta cuando la Cantera publica un flete
                 if (data.evento === "NUEVO_FLETE") {
                     mostrarFleteDisponible(data);
                 }
@@ -125,16 +116,23 @@
         }
 
         async function aceptarFlete(id, cantera, destino, precio) {
-            currentOrderId = id;
+            currentOrderId = Number(id);
             
-            // Elimina de la lista de disponibles
             const el = document.getElementById(`disponible-${id}`);
             if (el) el.remove();
 
-            // Notifica al Backend
+            // Notificación vía API HTTP
             await fetch(`https://volquetes-api.onrender.com/api/orders/${id}/aceptar`, { method: "POST" }).catch(() => {});
 
-            // Muestra tarjeta de Viaje Activo
+            // Respaldo inmediato vía WebSocket
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    evento: "CAMBIO_ESTADO",
+                    order_id: currentOrderId,
+                    nuevo_estado: "assigned"
+                }));
+            }
+
             document.getElementById("seccion-viaje-activo").style.display = "block";
             document.getElementById("active-id").innerText = id;
             document.getElementById("active-ruta").innerText = `${cantera} ➔ ${destino}`;
@@ -146,8 +144,17 @@
         async function iniciarViaje() {
             if (!currentOrderId) return;
 
-            // Notifica al Backend
+            // Notificación vía API HTTP
             await fetch(`https://volquetes-api.onrender.com/api/orders/${currentOrderId}/iniciar-viaje`, { method: "POST" }).catch(() => {});
+
+            // Respaldo inmediato vía WebSocket
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    evento: "CAMBIO_ESTADO",
+                    order_id: currentOrderId,
+                    nuevo_estado: "in_transit"
+                }));
+            }
 
             document.getElementById("btn-iniciar").style.display = "none";
             document.getElementById("btn-completar").style.display = "block";
@@ -181,8 +188,17 @@
 
         async function completarViaje() {
             if (gpsInterval) clearInterval(gpsInterval);
-            await fetch(`https://volquetes-api.onrender.com/api/orders/${currentOrderId}/completar-viaje`, { method: "POST" }).catch(() => {});
             
+            await fetch(`https://volquetes-api.onrender.com/api/orders/${currentOrderId}/completar-viaje`, { method: "POST" }).catch(() => {});
+
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    evento: "CAMBIO_ESTADO",
+                    order_id: currentOrderId,
+                    nuevo_estado: "completed"
+                }));
+            }
+
             alert("🎉 ¡Viaje Completado y Cobrado!");
             document.getElementById("seccion-viaje-activo").style.display = "none";
         }
