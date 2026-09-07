@@ -1,20 +1,35 @@
 from fastapi import FastAPI, Depends, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 from typing import List
 import json
+import traceback
 
 from app import models, schemas, auth
 from app.database import engine, get_db
 
+# Crear tablas y autorreparar columnas en PostgreSQL
 models.Base.metadata.create_all(bind=engine)
+
+try:
+    with engine.connect() as conn:
+        conn.execute(text("CREATE TABLE IF NOT EXISTS orders (id SERIAL PRIMARY KEY, quarry_name VARCHAR, delivery_address VARCHAR, total_price FLOAT, status VARCHAR);"))
+        conn.execute(text("ALTER TABLE orders ADD COLUMN IF NOT EXISTS quarry_name VARCHAR;"))
+        conn.execute(text("ALTER TABLE orders ADD COLUMN IF NOT EXISTS delivery_address VARCHAR;"))
+        conn.execute(text("ALTER TABLE orders ADD COLUMN IF NOT EXISTS total_price FLOAT;"))
+        conn.execute(text("ALTER TABLE orders ADD COLUMN IF NOT EXISTS status VARCHAR;"))
+        conn.commit()
+except Exception as db_init_err:
+    print(f"Aviso de inicialización BD: {db_init_err}")
 
 app = FastAPI(title="API Volquetes MVP")
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=False,  # <-- CAMBIA ESTO A False
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -32,7 +47,6 @@ class ConnectionManager:
             self.active_connections.remove(websocket)
 
     async def broadcast(self, message: dict):
-        # Limpia automáticamente conexiones cerradas para no congelar las transmisiones
         desconectados = []
         for connection in self.active_connections:
             try:
@@ -69,7 +83,6 @@ async def publicar_flete(
         db.commit()
         db.refresh(nueva_orden)
 
-        # Si el WebSocket falla, no detiene ni rompe la creación de la orden
         try:
             await manager.broadcast({
                 "evento": "NUEVO_FLETE",
@@ -85,8 +98,11 @@ async def publicar_flete(
 
     except Exception as e:
         db.rollback()
-        print(f"Error crítico en BD: {e}")
-        raise HTTPException(status_code=500, detail=f"Error en servidor: {str(e)}")
+        print(f"Error BD: {traceback.format_exc()}")
+        return JSONResponse(
+            status_code=400, 
+            content={"detail": f"Error en base de datos: {str(e)}"}
+        )
 
 @app.post("/api/orders/{order_id}/aceptar", tags=["Fletes"])
 async def aceptar_flete(order_id: int, db: Session = Depends(get_db)):
@@ -139,7 +155,7 @@ async def websocket_endpoint(websocket: WebSocket):
             try:
                 mensaje = json.loads(data)
             except Exception:
-                continue  # Si el mensaje no es JSON válido, ignora y NO desconecta al usuario
+                continue
 
             evento = mensaje.get("evento")
             if evento == "ACTUALIZAR_UBICACION":
@@ -160,7 +176,6 @@ async def websocket_endpoint(websocket: WebSocket):
     except Exception:
         manager.disconnect(websocket)
 
-# Guardar última ubicación reportada en memoria
 ultimas_ubicaciones = {}
 
 @app.get("/api/orders/{order_id}/estado", tags=["Fletes"])
