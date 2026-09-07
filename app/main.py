@@ -52,25 +52,41 @@ def read_root():
     return {"mensaje": "API Volquetes Activa"}
 
 @app.post("/api/orders/publicar", tags=["Fletes"])
-async def publicar_flete(quarry_name: str, delivery_address: str, total_price: float, db: Session = Depends(get_db)):
-    nueva_orden = models.Order(
-        quarry_name=quarry_name,
-        delivery_address=delivery_address,
-        price=total_price,
-        status="pending"
-    )
-    db.add(nueva_orden)
-    db.commit()
-    db.refresh(nueva_orden)
+async def publicar_flete(
+    quarry_name: str, 
+    delivery_address: str, 
+    total_price: float, 
+    db: Session = Depends(get_db)
+):
+    try:
+        nueva_orden = models.Order(
+            quarry_name=quarry_name,
+            delivery_address=delivery_address,
+            total_price=total_price,
+            status="pending"
+        )
+        db.add(nueva_orden)
+        db.commit()
+        db.refresh(nueva_orden)
 
-    await manager.broadcast({
-        "evento": "NUEVO_FLETE",
-        "order_id": nueva_orden.id,
-        "cantera": nueva_orden.quarry_name,
-        "destino": nueva_orden.delivery_address,
-        "precio": nueva_orden.price
-    })
-    return {"mensaje": "Flete publicado con éxito", "order_id": nueva_orden.id}
+        # Si el WebSocket falla, no detiene ni rompe la creación de la orden
+        try:
+            await manager.broadcast({
+                "evento": "NUEVO_FLETE",
+                "order_id": nueva_orden.id,
+                "quarry_name": quarry_name,
+                "delivery_address": delivery_address,
+                "total_price": total_price
+            })
+        except Exception as ws_e:
+            print(f"Error WebSocket ignorado: {ws_e}")
+
+        return {"status": "ok", "order_id": nueva_orden.id}
+
+    except Exception as e:
+        db.rollback()
+        print(f"Error crítico en BD: {e}")
+        raise HTTPException(status_code=500, detail=f"Error en servidor: {str(e)}")
 
 @app.post("/api/orders/{order_id}/aceptar", tags=["Fletes"])
 async def aceptar_flete(order_id: int, db: Session = Depends(get_db)):
