@@ -5,7 +5,9 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 from .database import get_db
+from fastapi import APIRouter
 
+router = APIRouter()
 SECRET_KEY = "clave_secreta_temporal_para_desarrollo"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7

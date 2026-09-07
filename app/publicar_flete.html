@@ -106,30 +106,51 @@
         }
 
         function agregarFleteALista(id, quarry, address, price) {
-            const contenedor = document.getElementById("lista-fletes");
-            if (contenedor.querySelector("i")) contenedor.innerHTML = "";
+    const contenedor = document.getElementById("lista-fletes");
+    if (contenedor.querySelector("i")) contenedor.innerHTML = "";
 
-            const idNum = Number(id);
-            const div = document.createElement("div");
-            div.className = "flete-card";
-            div.id = `flete-cantera-${idNum}`;
-            div.innerHTML = `
-                <h4 style="margin:0;">Flete #${idNum} - S/ ${price}</h4>
-                <p style="margin:5px 0;"><strong>Ruta:</strong> ${quarry} ➔ ${address}</p>
-                <p style="margin:5px 0;"><strong>Estado:</strong> 
-                    <span id="badge-${idNum}" class="status-badge badge-pending">🔍 Buscando Conductor...</span>
-                </p>
-                <p id="gps-log-${idNum}" class="gps-log">📡 Esperando acción del conductor...</p>
-                <div id="mapa-cantera-${idNum}" class="map-box"></div>
-            `;
-            contenedor.prepend(div);
+    const idNum = Number(id);
+    const div = document.createElement("div");
+    div.className = "flete-card";
+    div.id = `flete-cantera-${idNum}`;
+    div.innerHTML = `
+        <h4 style="margin:0;">Flete #${idNum} - S/ ${price}</h4>
+        <p style="margin:5px 0;"><strong>Ruta:</strong> ${quarry} ➔ ${address}</p>
+        <p style="margin:5px 0;"><strong>Estado:</strong> 
+            <span id="badge-${idNum}" class="status-badge badge-pending">🔍 Buscando Conductor...</span>
+        </p>
+        <p id="gps-log-${idNum}" class="gps-log">📡 Esperando acción del conductor...</p>
+        <div id="mapa-cantera-${idNum}" class="map-box"></div>
+    `;
+    contenedor.prepend(div);
 
-            setTimeout(() => {
-                mapas[idNum] = L.map(`mapa-cantera-${idNum}`).setView([-16.3673, -71.5691], 15);
-                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapas[idNum]);
-                mapas[idNum].invalidateSize();
-            }, 200);
-        }
+    setTimeout(() => {
+        mapas[idNum] = L.map(`mapa-cantera-${idNum}`).setView([-16.3673, -71.5691], 15);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapas[idNum]);
+        mapas[idNum].invalidateSize();
+    }, 200);
+
+    // Inicia la verificación en segundo plano cada 2 segundos
+    iniciarRastreoRespaldo(idNum);
+}
+
+function iniciarRastreoRespaldo(id) {
+    setInterval(async () => {
+        try {
+            const res = await fetch(`https://volquetes-api.onrender.com/api/orders/${id}/estado`);
+            if (!res.ok) return;
+            const data = await res.json();
+
+            // 1. Actualiza el Badge
+            actualizarEstadoFlete({ order_id: id, nuevo_estado: data.status });
+
+            // 2. Mueve el camión si hay coordenadas recibidas
+            if (data.lat && data.lng) {
+                moverCamionEnMapa({ order_id: id, lat: data.lat, lng: data.lng });
+            }
+        } catch (e) {}
+    }, 2000);
+}
 
         function actualizarEstadoFlete(data) {
             const id = Number(data.order_id);

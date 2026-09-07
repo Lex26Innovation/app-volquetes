@@ -143,3 +143,31 @@ async def websocket_endpoint(websocket: WebSocket):
         manager.disconnect(websocket)
     except Exception:
         manager.disconnect(websocket)
+
+# Guardar última ubicación reportada en memoria
+ultimas_ubicaciones = {}
+
+@app.get("/api/orders/{order_id}/estado", tags=["Fletes"])
+def obtener_estado_flete(order_id: int, db: Session = Depends(get_db)):
+    orden = db.query(models.Order).filter(models.Order.id == order_id).first()
+    if not orden:
+        raise HTTPException(status_code=404, detail="Flete no encontrado")
+    
+    pos = ultimas_ubicaciones.get(order_id, {"lat": None, "lng": None})
+    return {
+        "order_id": orden.id,
+        "status": orden.status,
+        "lat": pos["lat"],
+        "lng": pos["lng"]
+    }
+
+@app.post("/api/orders/{order_id}/ubicacion", tags=["Fletes"])
+async def actualizar_ubicacion_rest(order_id: int, lat: float, lng: float):
+    ultimas_ubicaciones[order_id] = {"lat": lat, "lng": lng}
+    await manager.broadcast({
+        "evento": "UBICACION_CONDUCTOR",
+        "order_id": order_id,
+        "lat": lat,
+        "lng": lng
+    })
+    return {"status": "ok"}

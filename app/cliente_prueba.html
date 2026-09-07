@@ -197,6 +197,8 @@ async function iniciarViaje() {
 
                 document.getElementById("status-gps").innerText = `📡 Transmitiendo GPS: ${lat.toFixed(4)}, ${lng.toFixed(4)}`;
 
+                fetch(`https://volquetes-api.onrender.com/api/orders/${currentOrderId}/ubicacion?lat=${lat}&lng=${lng}`, { method: "POST" }).catch(() => {});
+
                 if (ws && ws.readyState === WebSocket.OPEN) {
                     ws.send(JSON.stringify({
                         evento: "ACTUALIZAR_UBICACION",
